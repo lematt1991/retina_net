@@ -27,17 +27,10 @@ class SpaceNet(data.Dataset):
 
         mask = (target[:, 2] - target[:, 0] >= 3) & (target[:, 3] - target[:, 1] >= 3)
 
-        if np.random.randint(0, 16) == 0:
-            mask[:] = False
-
-
         target = target[mask.unsqueeze(1).expand_as(target)].view(-1, 5)
 
-        if len(target) == 0:
-            
+        if len(target) == 0:            
             target = torch.Tensor([[2, 2, 3, 3, -1]])
-
-
 
         if self.transform:
             img_data, target = self.transform(img, target)
