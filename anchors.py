@@ -41,9 +41,6 @@ def anchors(input_size):
 
     result = point_form(result)
 
-    # result[:, (0, 2)] = result[:, (0, 2)].clamp(min=0, max=input_size[1])
-    # result[:, (1, 3)] = result[:, (1, 3)].clamp(min=0, max=input_size[0])
-
     result = result / torch.cat([input_size, input_size], dim=0)
-    result.clamp_(max=2, min=0)
+    result.clamp_(max=1, min=0)
     return result
