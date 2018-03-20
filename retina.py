@@ -77,8 +77,8 @@ class Retina(torch.nn.Module):
         # RetinaNet uses feature pyramid levels P3 to P7, where P3 to P5 are
         # computed from the output of the corresponding ResNet residual stage (C3
         # through C5) using top-down and lateral connections just as in [19], P6 is
-        # obtained via a 3×3 stride-2 conv on C5, and P7 is computed by applying
-        # ReLU followed by a 3×3 stride-2 conv on P6. 
+        # obtained via a 3x3 stride-2 conv on C5, and P7 is computed by applying
+        # ReLU followed by a 3x3 stride-2 conv on P6. 
         p6 = self.conv6(c5)
         p7 = F.relu(self.conv7(p6))
         p5 = self.conv5(c5)

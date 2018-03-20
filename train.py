@@ -5,7 +5,7 @@ import torch.optim as optim
 import torch.utils.data as data
 from torch.autograd import Variable
 from Datasets import detection_collate, VOC, SpaceNet
-from loss import MultiBoxLoss
+from focal_loss import MultiBoxLoss
 import numpy as np
 import time
 from subprocess import check_output
