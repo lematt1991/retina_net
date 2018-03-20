@@ -76,7 +76,7 @@ def plot_training_data(args, inputs, targets, iter):
 def train(net, dataset, args):
     optimizer = optim.SGD(net.parameters(), lr=args.lr,
                       momentum=args.momentum, weight_decay=args.weight_decay)
-    criterion = MultiBoxLoss(len(dataset.classes) + 1, 0.5, True, 0, True, 3, 0.5, False, args.cuda)
+    criterion = MultiBoxLoss(len(dataset.classes) + 1, 0.5, 3, args.cuda)
 
     net.train()
 
@@ -126,7 +126,7 @@ def adjust_learning_rate(optimizer, gamma, step):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training')
     parser.add_argument('--jaccard_threshold', default=0.5, type=float, help='Min Jaccard index for matching')
-    parser.add_argument('--batch_size', default=32, type=int, help='Batch size for training')
+    parser.add_argument('--batch_size', default=8, type=int, help='Batch size for training')
     parser.add_argument('--resume', default=None, type=str, help='Resume from checkpoint')
     parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
     parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')

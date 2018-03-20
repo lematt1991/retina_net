@@ -28,19 +28,12 @@ class MultiBoxLoss(nn.Module):
         See: https://arxiv.org/pdf/1512.02325.pdf for more details.
     """
 
-    def __init__(self, num_classes, overlap_thresh, prior_for_matching,
-                 bkg_label, neg_mining, neg_pos, neg_overlap, encode_target,
-                 use_gpu=True, variance=[0.1, 0.2]):
+    def __init__(self, num_classes, overlap_thresh, neg_pos, use_gpu=True, variance=[0.1, 0.2]):
         super(MultiBoxLoss, self).__init__()
         self.use_gpu = use_gpu
         self.num_classes = num_classes
         self.threshold = overlap_thresh
-        self.background_label = bkg_label
-        self.encode_target = encode_target
-        self.use_prior_for_matching = prior_for_matching
-        self.do_neg_mining = neg_mining
         self.negpos_ratio = neg_pos
-        self.neg_overlap = neg_overlap
         self.variance = variance
 
     def forward(self, predictions, targets):
@@ -70,12 +63,10 @@ class MultiBoxLoss(nn.Module):
             defaults = priors.data
             match(self.threshold, truths, defaults, self.variance, labels,
                   loc_t, conf_t, idx)
-        if self.use_gpu:
-            loc_t = loc_t.cuda()
-            conf_t = conf_t.cuda()
+
         # wrap targets
-        loc_t = Variable(loc_t, requires_grad=False)
-        conf_t = Variable(conf_t, requires_grad=False)
+        loc_t = Variable(loc_t.cuda() if self.use_gpu else loc_t, requires_grad=False)
+        conf_t = Variable(conf_t.cuda() if self.use_gpu else conf_t, requires_grad=False)
 
         pos = conf_t > 0
         num_pos = pos.sum(dim=1, keepdim=True)
