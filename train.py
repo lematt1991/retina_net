@@ -79,9 +79,6 @@ def train(net, dataset, args):
     criterion = MultiBoxLoss(len(dataset.classes) + 1, 0.5, True, 0, True, 3, 0.5, False, args.cuda)
 
     net.train()
-    # loss counters
-    loc_loss = 0  # epoch
-    conf_loss = 0
 
     data_loader = data.DataLoader(dataset, args.batch_size, # num_workers=args.num_workers,
                                   shuffle=True, collate_fn=detection_collate)
@@ -108,9 +105,6 @@ def train(net, dataset, args):
             loss = loss_l + loss_c
             loss.backward()
             optimizer.step()
-
-            loc_loss += loss_l.data[0]
-            conf_loss += loss_c.data[0]
 
             args.writer.add_scalar('data/loss', loss.data[0], N * epoch + i)
             args.writer.add_scalar('data/loss_l', loss_l.data[0], N * epoch + i)
