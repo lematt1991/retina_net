@@ -1,6 +1,6 @@
 from __future__ import division
 import torch, pdb, math
-from utils import point_form, mesh
+from utils import corner_form, mesh, center_form
 
 def anchors(input_size):
     areas = [16*16, 32*32]
@@ -39,8 +39,9 @@ def anchors(input_size):
 
     result = torch.cat(anchors, dim=0)
 
-    result = point_form(result)
+    result = corner_form(result)
 
     result = result / torch.cat([input_size, input_size], dim=0)
     result.clamp_(max=1, min=0)
+    result = center_form(result)
     return result

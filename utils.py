@@ -1,4 +1,4 @@
-import torch
+import torch, pdb
 
 def mesh(x, y):
     '''
@@ -17,27 +17,32 @@ def mesh(x, y):
     # stack them side by side
     return torch.stack([xs, ys], dim=1)
     
-def point_form(boxes):
+def corner_form(boxes):
     """ Convert prior_boxes to (xmin, ymin, xmax, ymax)
     representation for comparison to point form ground truth data.
     Args:
-        boxes: (tensor) center-size default boxes from priorbox layers.
+        boxes: (tensor) center_form boxes (cx, cy, w, h)
     Return:
         boxes: (tensor) Converted xmin, ymin, xmax, ymax form of boxes.
     """
-    return torch.cat((boxes[:, :2] - boxes[:, 2:]/2,     # xmin, ymin
-                     boxes[:, :2] + boxes[:, 2:]/2), 1)  # xmax, ymax
+    mins = boxes[:, :2] - (boxes[:, 2:] / 2)
+    maxs = boxes[:, :2] + (boxes[:, 2:] / 2)
 
-def center_size(boxes):
+    return torch.cat([mins, maxs], dim=1)
+
+def center_form(boxes):
     """ Convert prior_boxes to (cx, cy, w, h)
     representation for comparison to center-size from ground truth data.
     Args:
-        boxes: (tensor) point_form boxes
+        boxes: (tensor) corner_form boxes
     Return:
-        boxes: (tensor) Converted xmin, ymin, xmax, ymax form of boxes.
+        boxes: (tensor) Converted (cx, cy, w, h) for of boxes
     """
-    return torch.cat((boxes[:, 2:] + boxes[:, :2])/2,  # cx, cy
-                     boxes[:, 2:] - boxes[:, :2], 1)  # w, h
+
+    center = (boxes[:, 2:] + boxes[:, :2]) / 2
+    hw = boxes[:, 2:] - boxes[:, :2]
+
+    return torch.cat([center, hw], dim=1)
 
 
 def intersect(box_a, box_b):
@@ -81,7 +86,6 @@ def jaccard(box_a, box_b):
     union = area_a + area_b - inter
     return inter / union  # [A,B]
 
-
 def match(threshold, truths, priors, variances, labels, loc_t, conf_t, idx):
     """Match each prior box with the ground truth box of the highest jaccard
     overlap, encode the bounding boxes, then return the matched indices
@@ -102,8 +106,9 @@ def match(threshold, truths, priors, variances, labels, loc_t, conf_t, idx):
     # jaccard index
     overlaps = jaccard(
         truths,
-        point_form(priors)
+        corner_form(priors)
     )
+
     # (Bipartite Matching)
     # [1,num_objects] best prior for each ground truth
     best_prior_overlap, best_prior_idx = overlaps.max(1, keepdim=True)
