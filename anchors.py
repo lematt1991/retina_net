@@ -1,23 +1,6 @@
 from __future__ import division
 import torch, pdb, math
-from utils import point_form
-
-def mesh(x, y):
-    '''
-    0  0
-    1  0
-    2  0
-    0  1
-    1  1
-    2  1
-    '''
-
-    # Create linear tensor from `0 - x`, and repeat it `y` times
-    xs = torch.arange(0, x).repeat(y)
-    # `[0,0,0,0,1,1,1,1,2,2,2,2...]`
-    ys = torch.arange(0, y).view(-1, 1).repeat(1, x).view(-1)
-    # stack them side by side
-    return torch.stack([xs, ys], dim=1)
+from utils import point_form, mesh
 
 def anchors(input_size):
     areas = [16*16, 32*32]

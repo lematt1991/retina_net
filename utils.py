@@ -1,5 +1,22 @@
 import torch
 
+def mesh(x, y):
+    '''
+    0  0
+    1  0
+    2  0
+    0  1
+    1  1
+    2  1
+    '''
+
+    # Create linear tensor from `0 - x`, and repeat it `y` times
+    xs = torch.arange(0, x).repeat(y)
+    # `[0,0,0,0,1,1,1,1,2,2,2,2...]`
+    ys = torch.arange(0, y).view(-1, 1).repeat(1, x).view(-1)
+    # stack them side by side
+    return torch.stack([xs, ys], dim=1)
+    
 def point_form(boxes):
     """ Convert prior_boxes to (xmin, ymin, xmax, ymax)
     representation for comparison to point form ground truth data.
@@ -13,7 +30,7 @@ def point_form(boxes):
 
 def center_size(boxes):
     """ Convert prior_boxes to (cx, cy, w, h)
-    representation for comparison to center-size form ground truth data.
+    representation for comparison to center-size from ground truth data.
     Args:
         boxes: (tensor) point_form boxes
     Return:
