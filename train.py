@@ -68,7 +68,6 @@ def plot_training_data(args, inputs, targets, iter):
     for box in target.round().astype(int):
         cv2.rectangle(img, tuple(box[:2]), tuple(box[2:]), (0,0,255))
 
-
     img = img[:, :, (2,1,0)].transpose((2, 0, 1))
     img = torch.from_numpy(img)
 
@@ -77,7 +76,7 @@ def plot_training_data(args, inputs, targets, iter):
 def train(net, dataset, args):
     optimizer = optim.SGD(net.parameters(), lr=args.lr,
                       momentum=args.momentum, weight_decay=args.weight_decay)
-    criterion = MultiBoxLoss(args.num_classes, 0.5, True, 0, True, 3, 0.5, False, args.cuda)
+    criterion = MultiBoxLoss(len(dataset.classes) + 1, 0.5, True, 0, True, 3, 0.5, False, args.cuda)
 
     net.train()
     # loss counters
@@ -132,13 +131,10 @@ def adjust_learning_rate(optimizer, gamma, step):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training')
-    parser.add_argument('--version', default='v2', help='conv11_2(v2) or pool6(v1) as last layer')
-    parser.add_argument('--basenet', default='vgg16_reducedfc.pth', help='pretrained base model')
     parser.add_argument('--jaccard_threshold', default=0.5, type=float, help='Min Jaccard index for matching')
     parser.add_argument('--batch_size', default=32, type=int, help='Batch size for training')
     parser.add_argument('--resume', default=None, type=str, help='Resume from checkpoint')
     parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
-    parser.add_argument('--iterations', default=120000, type=int, help='Number of training iterations')
     parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
     parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, help='initial learning rate')
     parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
@@ -147,7 +143,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
     parser.add_argument('--epochs', default=100, type=int, help='Maximum training epochs')
     parser.add_argument('--train_data', required=True, help='Path to training data')
-    parser.add_argument('--ssd_size', default=300, type=int, help='Input dimensions for SSD')
+    parser.add_argument('--ssd_size', default=512, type=int, help='Input dimensions for SSD')
     args = parser.parse_args()
 
     if 'VOC' in args.train_data:
@@ -156,8 +152,6 @@ if __name__ == '__main__':
         dataset = SpaceNet(args.train_data, transform=Transform(args.ssd_size))
 
     args.checkpoint_dir = os.path.join(args.save_folder, 'ssd_%s' % datetime.now().isoformat())
-    args.means = (104, 117, 123)  # only support voc now
-    args.num_classes = len(dataset.classes) + 1
     args.stepvalues = (20, 50, 70)
     args.start_iter = 0
     args.writer = SummaryWriter()
