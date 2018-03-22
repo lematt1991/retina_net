@@ -80,8 +80,6 @@ class Anchors:
         labels[max_iou >= 0.5] = target[:, -1][iou_idxs[max_iou > 0.5]] + 1
         return torch.cat([target_boxes, labels, max_iou.unsqueeze(1)], dim=1)
 
-
-    def decode(self, boxes):
         
 
 
