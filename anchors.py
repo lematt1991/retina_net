@@ -40,12 +40,9 @@ def anchors(input_size):
     result = torch.cat(anchors, dim=0)
 
     result = corner_form(result)
-
     result /= torch.cat([input_size, input_size], dim=0)
-
     result.clamp_(min=0, max=1)
 
-    # result.clamp_(max=input_size[0], min=0)
     result = center_form(result)
     return result
 
@@ -77,10 +74,10 @@ class Anchors:
 
         target_boxes = torch.cat([xy, wh], dim=1)
         labels = torch.zeros(target_boxes.shape[0], 1)
-        labels[max_iou >= 0.5] = target[:, -1][iou_idxs[max_iou > 0.5]] + 1
+        labels[max_iou >= 0.5] = target[:, -1][iou_idxs[max_iou >= 0.5]] + 1
         return torch.cat([target_boxes, labels, max_iou.unsqueeze(1)], dim=1)
 
-        
+
 
 
 
