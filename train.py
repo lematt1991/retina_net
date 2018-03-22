@@ -14,6 +14,7 @@ from retina import Retina
 from torchvision import transforms
 from tensorboardX import SummaryWriter
 import torchvision.utils as vutils
+from anchors import Anchors
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
@@ -28,13 +29,14 @@ def save_checkpoint(net, args, iter, filename):
 def load_checkpoint(net, args):
     if args.resume:
         chkpnt = torch.load(args.resume)
-        args.start_iter = chkpnt['iter']
+        args.start_iter = chkpnt['iter'] + 1
         net.load_state_dict(chkpnt['state_dict'])
     else:
         net.init_weights()
 
 class Transform:
     def __init__(self, size):
+        self.size = size
         self.transform = transforms.Compose([
             transforms.Resize((size, size)),
             transforms.ToTensor(),
@@ -50,6 +52,7 @@ class Transform:
         if len(target) > 0:
             target[:, (0, 2)] /= float(img.width)
             target[:, (1, 3)] /= float(img.height)
+            # target *= self.size
         return img_data, target
 
 def plot_training_data(args, inputs, targets, iter):
@@ -76,7 +79,9 @@ def plot_training_data(args, inputs, targets, iter):
 def train(net, dataset, args):
     optimizer = optim.SGD(net.parameters(), lr=args.lr,
                       momentum=args.momentum, weight_decay=args.weight_decay)
-    criterion = MultiBoxLoss(len(dataset.classes) + 1, 0.5, 3, args.cuda)
+    anchors = Variable(dataset.anchors.anchors, requires_grad=False)
+
+    criterion = MultiBoxLoss(len(dataset.classes) + 1, 0.5, 3, use_gpu=args.cuda)
 
     net.train()
 
@@ -94,7 +99,7 @@ def train(net, dataset, args):
             # plot_training_data(args, images, targets, N * epoch + i)
 
             images = mk_var(images)
-            targets = [mk_var(anno) for anno in targets]
+            targets = mk_var(targets)
 
             # forward
             out = net(images)
@@ -102,7 +107,7 @@ def train(net, dataset, args):
             # backprop
             optimizer.zero_grad()
             loss_l, loss_c = criterion(out, targets)
-            loss = loss_l + loss_c
+            loss = loss_l + 4 * loss_c
             loss.backward()
             optimizer.step()
 
@@ -110,7 +115,7 @@ def train(net, dataset, args):
             args.writer.add_scalar('data/loss_l', loss_l.data[0], N * epoch + i)
             args.writer.add_scalar('data/loss_c', loss_c.data[0], N * epoch + i)
 
-            print('%d: [%d/%d] || Loss: %.4f' % (epoch, i, N, loss.data[0]))
+            print('%d: [%d/%d] || Loss: %.4f, loss_c: %f, loss_l: %f' % (epoch, i, N, loss.data[0], loss_c.data[0], loss_l.data[0]))
 
         save_checkpoint(net, args, epoch, os.path.join(args.checkpoint_dir, 'epoch_%d.pth' % epoch))
 
@@ -140,10 +145,12 @@ if __name__ == '__main__':
     parser.add_argument('--ssd_size', default=512, type=int, help='Input dimensions for SSD')
     args = parser.parse_args()
 
+    anchors = Anchors(args.ssd_size)
+
     if 'VOC' in args.train_data:
-        dataset = VOC(args.train_data, transform=Transform(args.ssd_size))
+        dataset = VOC(args.train_data, Transform(args.ssd_size), anchors)
     else:
-        dataset = SpaceNet(args.train_data, transform=Transform(args.ssd_size))
+        dataset = SpaceNet(args.train_data, Transform(args.ssd_size), anchors)
 
     args.checkpoint_dir = os.path.join(args.save_folder, 'ssd_%s' % datetime.now().isoformat())
     args.stepvalues = (20, 50, 70)
@@ -159,7 +166,6 @@ if __name__ == '__main__':
 
     if args.cuda:
         net = net.cuda()
-
 
     load_checkpoint(net, args)
     train(net, dataset, args)

@@ -35,6 +35,7 @@ class MultiBoxLoss(nn.Module):
         self.threshold = overlap_thresh
         self.negpos_ratio = neg_pos
         self.variance = variance
+        self.alpha = Variable(torch.Tensor([0.25] + [0.75] * (num_classes - 1)), requires_grad=False)
 
     def forward(self, predictions, targets):
         """Multibox Loss
@@ -48,43 +49,63 @@ class MultiBoxLoss(nn.Module):
             targets (tensor): Ground truth boxes and labels for a batch,
                 shape: [batch_size,num_objs,5] (last idx is the label).
         """
-        loc_pred, conf_pred, anchors = predictions
-        batch_size, num_anchors, _ = loc_pred.shape
-        anchors = anchors[:loc_pred.size(1), :]
 
-        # match anchors (default boxes) and ground truth boxes
-        loc_t = torch.Tensor(batch_size, num_anchors, 4)
-        conf_t = torch.LongTensor(batch_size, num_anchors)
+        try:
+            loc_pred, conf_pred = predictions
+            batch_size, num_anchors, num_classes = conf_pred.shape
 
-        loc_loss, N, conf_loss = 0, 0, 0
+            target_boxes = targets[:, :, :4].contiguous().view(-1, 4)
+            target_labels = targets[:, :, 4].contiguous().view(-1).long()
+            ious = targets[:, :, 5].contiguous().view(-1)
 
-        for idx in range(batch_size):
-            target = targets[idx]
+            loc_pred = loc_pred.view(-1, 4)
 
-            # Get indices of anchors that overlap the most with ground truth data
-            overlaps = jaccard(target[:, :-1].data, corner_form(anchors.data))
-            _, match_idxs = overlaps.max(dim=1)
+            mask = (ious >= 0.5).unsqueeze(1).expand_as(loc_pred)
+            pos_pred_boxes = loc_pred[mask].view(-1, 4)
+            pos_target_boxes = target_boxes[mask].view(-1, 4)
 
-            # Get best overlap for each anchor with respect to ground truth
-            iou, _ = overlaps.max(dim=0)
+            loc_loss = F.smooth_l1_loss(pos_pred_boxes, pos_target_boxes)
 
-            loc_loss += F.smooth_l1_loss(loc_pred[idx][match_idxs], target[:, :-1], size_average=False)
+            onehot = Variable(torch.eye(num_classes)[target_labels.data])
 
-            current_conf = conf_pred[idx]
-            pos = current_conf[match_idxs]
-            num_pos = pos.shape[0]
+            # Ignore ambiguous cases where overlap is close, but not close enough...
+            onehot[((ious > 0.3) & (ious < 0.5)).unsqueeze(1).expand_as(onehot)] = 0
 
-            # Hard negative mining
-            neg = current_conf[(iou < 0.4).unsqueeze(1).expand_as(current_conf)].view(-1, 2)
-            _, sorted_idxs = neg[:, 0].sort(descending=True)
-            neg = neg[sorted_idxs[:self.negpos_ratio * num_pos]]
+            #Subtract max on each cell for numerical reasons
+            conf_pred = conf_pred.view(-1, num_classes)
+            conf_pred = conf_pred - conf_pred.max(dim=1)[0].unsqueeze(1).expand_as(conf_pred)
 
-            labels = torch.cat([target[:, -1].data.long() + 1, torch.zeros(len(neg)).long()], dim=0)
+            pt = F.softmax(conf_pred, dim=1).clamp(min=0.000001, max=0.999999)
+            gamma = 2
 
-            conf_loss += F.cross_entropy(torch.cat([pos, neg], dim=0), Variable(labels))
+            conf_loss = -(torch.pow(1 - pt, gamma) * onehot * torch.log(pt)).sum()
 
-            N += len(target)
+            num_pos = max((ious > 0.5).sum().data[0], 1)
+        except Exception as e:
+            pdb.set_trace()
 
-        loc_loss /= N
-        conf_loss /= N
-        return loc_loss, conf_loss
+        return loc_loss / num_pos, conf_loss / num_pos
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -28,13 +28,14 @@ class MultiBoxLoss(nn.Module):
         See: https://arxiv.org/pdf/1512.02325.pdf for more details.
     """
 
-    def __init__(self, num_classes, overlap_thresh, neg_pos, use_gpu=True, variance=[0.1, 0.2]):
+    def __init__(self, num_classes, overlap_thresh, neg_pos, priors, use_gpu=True, variance=[0.1, 0.2]):
         super(MultiBoxLoss, self).__init__()
         self.use_gpu = use_gpu
         self.num_classes = num_classes
         self.threshold = overlap_thresh
         self.negpos_ratio = neg_pos
         self.variance = variance
+        self.priors = priors
 
     def forward(self, predictions, targets):
         """Multibox Loss
@@ -48,7 +49,8 @@ class MultiBoxLoss(nn.Module):
             ground_truth (tensor): Ground truth boxes and labels for a batch,
                 shape: [batch_size,num_objs,5] (last idx is the label).
         """
-        loc_data, conf_data, priors = predictions
+        loc_data, conf_data = predictions
+        priors = self.priors
         num = loc_data.size(0)
         priors = priors[:loc_data.size(1), :]
         num_priors = (priors.size(0))

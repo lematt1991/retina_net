@@ -40,9 +40,9 @@ def center_form(boxes):
     """
 
     center = (boxes[:, 2:] + boxes[:, :2]) / 2
-    hw = boxes[:, 2:] - boxes[:, :2]
+    wh = boxes[:, 2:] - boxes[:, :2]
 
-    return torch.cat([center, hw], dim=1)
+    return torch.cat([center, wh], dim=1)
 
 
 def intersect(box_a, box_b):

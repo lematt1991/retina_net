@@ -1,9 +1,9 @@
 from __future__ import division
 import torch, pdb, math
-from utils import corner_form, mesh, center_form
+from utils import corner_form, mesh, center_form, jaccard
 
 def anchors(input_size):
-    areas = [16*16, 32*32]
+    areas = [16*16, 32*32, 64*64, 128*128, 256*256, 512*512]
     aspect_ratios = [0.5, 1.0, 2.0]
     scales = [1.0, pow(2.0, 1.0/3.0), pow(2.0, 2.0/3.0)]
     if isinstance(input_size, int):
@@ -41,7 +41,82 @@ def anchors(input_size):
 
     result = corner_form(result)
 
-    result = result / torch.cat([input_size, input_size], dim=0)
-    result.clamp_(max=1, min=0)
+    result /= torch.cat([input_size, input_size], dim=0)
+
+    result.clamp_(min=0, max=1)
+
+    # result.clamp_(max=input_size[0], min=0)
     result = center_form(result)
     return result
+
+
+class Anchors:
+    def __init__(self, size):
+        self.size = torch.Tensor([size, size])
+        self.anchors = anchors(size).cuda()
+
+    # Encode the target boxes according to:
+    # https://arxiv.org/pdf/1611.10012.pdf
+    # TLDR: 
+    #   - [10 * xc/wa, 10 * yc/ha, 5*log w, 5*log h]
+    #   - Use argmax matching
+    def encode(self, target):
+        if len(target) == 0:
+            return torch.zeros(self.anchors.shape[0], 6)
+
+        ious = jaccard(target[:, :4], corner_form(self.anchors))
+        max_iou, iou_idxs = ious.max(dim=0)
+
+        if (max_iou >= 0.5).sum() == 0:
+            return torch.zeros(self.anchors.shape[0], 6)
+
+        boxes = center_form(target[:, :4])[iou_idxs]
+        
+        xy = 10 * (boxes[:, :2] - self.anchors[:, :2]) / self.anchors[:, 2:]
+        wh = 5 * torch.log(boxes[:, 2:] / self.anchors[:, 2:])
+
+        target_boxes = torch.cat([xy, wh], dim=1)
+        labels = torch.zeros(target_boxes.shape[0], 1)
+        labels[max_iou >= 0.5] = target[:, -1][iou_idxs[max_iou > 0.5]] + 1
+        return torch.cat([target_boxes, labels, max_iou.unsqueeze(1)], dim=1)
+
+
+    def decode(self, boxes):
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

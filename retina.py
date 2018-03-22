@@ -32,9 +32,6 @@ class Retina(torch.nn.Module):
     def __init__(self, classes, size):
         super(Retina, self).__init__()
 
-        self.size = size
-        self.anchors = torch.autograd.Variable(anchors(size), requires_grad=False)
-
         self.classes = classes
         self.num_classes = len(classes) + 1
 
@@ -92,7 +89,7 @@ class Retina(torch.nn.Module):
         loc_pred, conf_pred = [], []
 
         # Localization/Classification
-        for fm in [p2, p3]: #, p4, p5, p6, p7]:
+        for fm in [p2, p3, p4, p5, p6, p7]: #, p4, p5, p6, p7]:
             locs = self.loc(fm).permute((0, 2, 3, 1))
             confs = self.conf(fm).permute((0, 2, 3, 1))
 
@@ -106,14 +103,7 @@ class Retina(torch.nn.Module):
         loc = torch.cat(loc_pred, dim=1)
         conf = torch.cat(conf_pred, dim=1)
 
-        if not self.training:
-            return self.detect(
-                loc,                                # loc preds
-                F.softmax(conf, dim=2),                 # conf preds
-                self.anchors.type(type(x.data))      # default boxes
-            )
-        else:
-            return (loc, conf, self.anchors)
+        return loc, conf
 
 if __name__ == '__main__':
     net = Retina(['background', 'building'])
