@@ -1,8 +1,8 @@
 from __future__ import division
 import torch, pdb, math
-from utils import corner_form, mesh, center_form, jaccard
+from utils import corner_form, mesh, center_form, jaccard, encode, decode
 
-def anchors(input_size):
+def mk_anchors(input_size):
     areas = [16*16, 32*32, 64*64, 128*128, 256*256, 512*512]
     aspect_ratios = [0.5, 1.0, 2.0]
     scales = [1.0, pow(2.0, 1.0/3.0), pow(2.0, 2.0/3.0)]
@@ -46,11 +46,10 @@ def anchors(input_size):
     result = center_form(result)
     return result
 
-
 class Anchors:
     def __init__(self, size):
         self.size = torch.Tensor([size, size])
-        self.anchors = anchors(size).cuda()
+        self.anchors = mk_anchors(size)
 
     # Encode the target boxes according to:
     # https://arxiv.org/pdf/1611.10012.pdf
@@ -73,14 +72,33 @@ class Anchors:
         wh = 5 * torch.log(boxes[:, 2:] / self.anchors[:, 2:])
 
         target_boxes = torch.cat([xy, wh], dim=1)
+
         labels = torch.zeros(target_boxes.shape[0], 1)
         labels[max_iou >= 0.5] = target[:, -1][iou_idxs[max_iou >= 0.5]] + 1
         return torch.cat([target_boxes, labels, max_iou.unsqueeze(1)], dim=1)
 
+    # Undo the anchor offset encoding done above...
+    def decode(self, boxes):
+        xy = boxes[:, :2] / 10 * self.anchors[:, 2:] + self.anchors[:, :2]
+        wh = self.anchors[:, 2:] * torch.exp(boxes[:, 2:] / 5)
+
+        boxes = torch.cat([xy, wh], dim=1)
+
+        return corner_form(boxes)
+
+if __name__ == '__main__':
+    default_type = 'torch.DoubleTensor'
+    torch.set_default_tensor_type(default_type)
+
+    anchors = Anchors(512, False)
+    boxes = torch.rand(20, 4) * 0.5
+
+    boxes[:, 2:] += 0.5
+
+    decoded = anchors.decode(anchors.encode(boxes)[:, :4])
 
 
-
-
+    pdb.set_trace()
 
 
 
