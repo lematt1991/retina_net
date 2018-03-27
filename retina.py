@@ -2,7 +2,7 @@ from torchvision.models import resnet101
 import pdb, torch
 import torch.nn.functional as F
 from detection import Detect
-from anchors import anchors
+from anchors import Anchors
 
 class Retina(torch.nn.Module):
     ANCHORS_PER_GRID_CELL = 9
@@ -29,7 +29,7 @@ class Retina(torch.nn.Module):
                 torch.nn.init.xavier_normal(layer.weight)
                 layer.bias.data.zero_()
 
-    def __init__(self, classes, size):
+    def __init__(self, classes, size, anchors = None):
         super(Retina, self).__init__()
 
         self.classes = classes
@@ -59,7 +59,9 @@ class Retina(torch.nn.Module):
         self.loc = self.mk_subnet(4, include_sigmoid=False)
         self.conf = self.mk_subnet(self.num_classes, include_sigmoid = False)
 
-        self.detect = Detect(self.num_classes, 0, 200, 0.01, 0.45)
+        self.anchors = Anchors(size, False) if anchors is None else anchors
+
+        self.detect = Detect(self.num_classes, 200, 0.01, 0.45, self.anchors)
 
     def forward(self, x):
         batch_size, channels, height, width = x.shape
@@ -103,7 +105,10 @@ class Retina(torch.nn.Module):
         loc = torch.cat(loc_pred, dim=1)
         conf = torch.cat(conf_pred, dim=1)
 
-        return loc, conf
+        if self.training:
+            return loc, conf
+        else:
+            return self.detect(loc, F.softmax(conf, dim=2))
 
 if __name__ == '__main__':
     net = Retina(['background', 'building'])

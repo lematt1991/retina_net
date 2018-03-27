@@ -37,6 +37,47 @@ class MultiBoxLoss(nn.Module):
         self.variance = variance
         self.alpha = Variable(torch.Tensor([0.25] + [0.75] * (num_classes - 1)), requires_grad=False)
 
+    def cross_entropy(self, conf_pred, target_labels, ious, num_classes):
+        num_pos = (target_labels > 0).sum().data[0]
+        num_neg = max(128, num_pos * self.negpos_ratio)
+
+        # hard negative mining
+        neg_conf = conf_pred[(ious < 0.3).unsqueeze(1).expand_as(conf_pred)].view(-1, num_classes)
+        _, idxs = F.softmax(neg_conf, dim=1)[:, 0].sort()
+
+        mined_neg_conf = neg_conf[idxs[:num_neg]]
+        neg_labels = Variable(torch.zeros(mined_neg_conf.shape[0]).long(), requires_grad=False)
+
+        # Class loss
+        if num_pos > 0:
+            pos_conf = conf_pred[(target_labels > 0).unsqueeze(1).expand_as(conf_pred)].view(-1, num_classes)
+            pos_labels = target_labels[target_labels > 0]
+            conf = torch.cat([pos_conf, mined_neg_conf], dim=0)
+            labels = torch.cat([pos_labels, neg_labels], dim=0)
+        else:
+            conf = mined_neg_conf
+            labels = neg_labels
+
+        return F.cross_entropy(conf, labels)
+
+    def focal_loss(self, conf_pred, target_labels, ious, num_classes):
+        onehot = Variable(torch.eye(num_classes)[target_labels.data])
+
+        # Ignore ambiguous cases where overlap is close, but not close enough...
+        onehot[((ious > 0.3) & (ious < 0.5)).unsqueeze(1).expand_as(onehot)] = 0
+
+        # Subtract max on each cell for numerical reasons
+        # https://github.com/caffe2/caffe2/blob/master/modules/detectron/softmax_focal_loss_op.cu#L36-L41
+        conf_pred = conf_pred.view(-1, num_classes)
+        conf_pred = conf_pred - conf_pred.max(dim=1)[0].unsqueeze(1).expand_as(conf_pred)
+
+        pt = F.softmax(conf_pred, dim=1)
+        gamma = 2
+
+        conf_loss = -(torch.pow(1 - pt, gamma) * onehot * torch.log(pt)).sum()
+
+        return conf_loss / pt.shape[0]
+
     def forward(self, predictions, targets):
         """Multibox Loss
         Args:
@@ -50,41 +91,32 @@ class MultiBoxLoss(nn.Module):
                 shape: [batch_size,num_objs,5] (last idx is the label).
         """
 
-        try:
-            loc_pred, conf_pred = predictions
-            batch_size, num_anchors, num_classes = conf_pred.shape
+        loc_pred, conf_pred = predictions
+        batch_size, num_anchors, num_classes = conf_pred.shape
 
-            target_boxes = targets[:, :, :4].contiguous().view(-1, 4)
-            target_labels = targets[:, :, 4].contiguous().view(-1).long()
-            ious = targets[:, :, 5].contiguous().view(-1)
+        target_boxes = targets[:, :, :4].contiguous().view(-1, 4)
+        target_labels = targets[:, :, 4].contiguous().view(-1).long()
+        ious = targets[:, :, 5].contiguous().view(-1)
 
-            loc_pred = loc_pred.view(-1, 4)
+        conf_pred = conf_pred.view(-1, num_classes)
+        loc_pred = loc_pred.view(-1, 4)
 
-            mask = (ious >= 0.5).unsqueeze(1).expand_as(loc_pred)
-            pos_pred_boxes = loc_pred[mask].view(-1, 4)
-            pos_target_boxes = target_boxes[mask].view(-1, 4)
+        # conf_loss = self.cross_entropy(conf_pred, target_labels, ious, num_classes)
+        conf_loss = self.focal_loss(conf_pred, target_labels, ious, num_classes)
 
+        # Location loss
+        mask = (ious >= 0.5).unsqueeze(1).expand_as(loc_pred)
+        pos_pred_boxes = loc_pred[mask].view(-1, 4)
+        pos_target_boxes = target_boxes[mask].view(-1, 4)
+        if len(pos_pred_boxes) > 0:
             loc_loss = F.smooth_l1_loss(pos_pred_boxes, pos_target_boxes)
+        else:
+            loc_loss = 0
 
-            onehot = Variable(torch.eye(num_classes)[target_labels.data])
+        num_pos = max((ious > 0.5).sum().data[0], 1)
 
-            # Ignore ambiguous cases where overlap is close, but not close enough...
-            onehot[((ious > 0.3) & (ious < 0.5)).unsqueeze(1).expand_as(onehot)] = 0
 
-            #Subtract max on each cell for numerical reasons
-            conf_pred = conf_pred.view(-1, num_classes)
-            conf_pred = conf_pred - conf_pred.max(dim=1)[0].unsqueeze(1).expand_as(conf_pred)
-
-            pt = F.softmax(conf_pred, dim=1).clamp(min=0.000001, max=0.999999)
-            gamma = 2
-
-            conf_loss = -(torch.pow(1 - pt, gamma) * onehot * torch.log(pt)).sum()
-
-            num_pos = max((ious > 0.5).sum().data[0], 1)
-        except Exception as e:
-            pdb.set_trace()
-
-        return loc_loss / num_pos, conf_loss / num_pos
+        return loc_loss, conf_loss
 
 
 

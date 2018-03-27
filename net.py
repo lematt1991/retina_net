@@ -6,6 +6,7 @@ from retina import Retina
 from PIL import Image
 from torchvision import transforms
 from torch.autograd import Variable
+from anchors import Anchors
 
 pandas.options.mode.chained_assignment = None
 
@@ -57,8 +58,9 @@ class SSD:
 
         return zipfile
 
-    def __init__(self, weights, classes=['building'], size=300):
-        self.net = Retina(classes, size).eval().cuda()
+    def __init__(self, weights, classes=['building'], size=512):
+        anchors = Anchors(size)
+        self.net = Retina(classes, size, anchors).eval()
         chkpnt = torch.load(weights)
         self.size = size
         self.net.load_state_dict(chkpnt['state_dict'])
@@ -78,7 +80,7 @@ class SSD:
         t0 = time.time()
         img = self.transform(image)
 
-        out = self.net(Variable(img.unsqueeze(0).cuda(), volatile=True)).squeeze().data.cpu()
+        out = self.net(Variable(img.unsqueeze(0), volatile=True)).squeeze().data.cpu()
         total_time = time.time() - t0
         
         scores = out[:, :, 0] # class X top K X (score, minx, miny, maxx, maxy)
@@ -91,6 +93,7 @@ class SSD:
         boxes[:, (2, 4)] = np.clip(boxes[:, (2, 4)] * image.height, a_min=0, a_max=image.height)
 
         df = pandas.DataFrame(boxes, columns=['score', 'x1' ,'y1', 'x2', 'y2'])
+
         if eval_mode:
             return df[df['score'] > threshold], df, total_time
         else:
@@ -111,3 +114,30 @@ class SSD:
             all_rects['image_id'] = i
 
             yield pred, all_rects, ()
+
+if __name__ == '__main__':
+    import cv2, sys, argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--weights', required=True)
+    parser.add_argument('--img', required=True)
+    args = parser.parse_args()
+    
+    img = Image.open(args.img)
+    
+    ssd = SSD(args.weights, size=512)
+    boxes = ssd.predict_image(img, 0)
+
+    img_data = np.array(img)[:, :, (2, 1, 0)].copy()
+
+    for box in boxes[['x1', 'y1', 'x2', 'y2']].values[:10].round().astype(int):
+        cv2.rectangle(img_data, tuple(box[:2]), tuple(box[2:]), (0,0,255))
+
+    cv2.imwrite('out.jpg', img_data)
+
+
+
+
+
+
+

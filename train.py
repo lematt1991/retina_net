@@ -15,6 +15,7 @@ from torchvision import transforms
 from tensorboardX import SummaryWriter
 import torchvision.utils as vutils
 from anchors import Anchors
+import torch.nn.functional as F
 
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
@@ -81,7 +82,7 @@ def train(net, dataset, args):
                       momentum=args.momentum, weight_decay=args.weight_decay)
     anchors = Variable(dataset.anchors.anchors, requires_grad=False)
 
-    criterion = MultiBoxLoss(len(dataset.classes) + 1, 0.5, 3, use_gpu=args.cuda)
+    criterion = MultiBoxLoss(len(dataset.classes) + 1, 0.5, 3)
 
     net.train()
 
@@ -107,9 +108,14 @@ def train(net, dataset, args):
             # backprop
             optimizer.zero_grad()
             loss_l, loss_c = criterion(out, targets)
-            loss = loss_l + 4 * loss_c
+            loss = loss_l + loss_c
             loss.backward()
             optimizer.step()
+
+            if i % 10 == 0:
+                conf = F.softmax(out[1].view(-1, len(dataset.classes) + 1), dim=1).data.cpu().numpy()
+                args.writer.add_histogram('data/background conf', conf[:, 0], N * epoch + i)
+                args.writer.add_histogram('data/building conf', conf[:, 1], N * epoch + i)
 
             args.writer.add_scalar('data/loss', loss.data[0], N * epoch + i)
             args.writer.add_scalar('data/loss_l', loss_l.data[0], N * epoch + i)
@@ -145,6 +151,9 @@ if __name__ == '__main__':
     parser.add_argument('--ssd_size', default=512, type=int, help='Input dimensions for SSD')
     args = parser.parse_args()
 
+    default_type = 'torch.cuda.FloatTensor' if args.cuda else 'torch.FloatTensor'
+    torch.set_default_tensor_type(default_type)
+
     anchors = Anchors(args.ssd_size)
 
     if 'VOC' in args.train_data:
@@ -159,10 +168,7 @@ if __name__ == '__main__':
 
     os.makedirs(args.save_folder, exist_ok = True)
 
-    default_type = 'torch.cuda.FloatTensor' if args.cuda else 'torch.FloatTensor'
-    torch.set_default_tensor_type(default_type)
-
-    net = Retina(dataset.classes, args.ssd_size)
+    net = Retina(dataset.classes, args.ssd_size, anchors)
 
     if args.cuda:
         net = net.cuda()

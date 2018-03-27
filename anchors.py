@@ -90,7 +90,7 @@ if __name__ == '__main__':
     default_type = 'torch.DoubleTensor'
     torch.set_default_tensor_type(default_type)
 
-    anchors = Anchors(512, False)
+    anchors = Anchors(512)
     boxes = torch.rand(20, 4) * 0.5
 
     boxes[:, 2:] += 0.5
