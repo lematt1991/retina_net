@@ -11,7 +11,6 @@ from retina import Retina
 from torchvision import transforms
 from tensorboardX import SummaryWriter
 import torchvision.utils as vutils
-from anchors import Anchors
 import torch.nn.functional as F
 
 def str2bool(v):
@@ -33,13 +32,14 @@ def load_checkpoint(net, args):
         net.init_weights()
 
 class Transform:
-    def __init__(self, size):
+    def __init__(self, size, anchors):
         self.size = size
         self.transform = transforms.Compose([
             transforms.Resize((size, size)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
+        self.anchors = anchors
 
     def __call__(self, img, target):
         '''
@@ -50,8 +50,7 @@ class Transform:
         if len(target) > 0:
             target[:, (0, 2)] /= float(img.width)
             target[:, (1, 3)] /= float(img.height)
-            # target *= self.size
-        return img_data, target
+        return img_data, self.anchors.encode(target)
 
 def plot_training_data(args, inputs, targets, iter):
     r = np.random.randint(0, len(inputs))
@@ -77,7 +76,6 @@ def plot_training_data(args, inputs, targets, iter):
 def train(net, dataset, args):
     optimizer = optim.SGD(net.parameters(), lr=args.lr,
                       momentum=args.momentum, weight_decay=args.weight_decay)
-    anchors = Variable(dataset.anchors.anchors, requires_grad=False)
 
     criterion = Loss(len(dataset.classes) + 1, 3)
 
@@ -88,12 +86,12 @@ def train(net, dataset, args):
     N = len(data_loader)
 
     mk_var = lambda x: Variable(x.cuda() if args.cuda else x)
-
+    lr = args.lr
     for epoch in range(args.start_iter, args.epochs):
-        for i, (images, targets) in enumerate(data_loader):
-            if epoch in args.stepvalues:
-                adjust_learning_rate(optimizer, args.gamma, epoch)
+        if epoch in args.stepvalues:
+            lr = adjust_learning_rate(optimizer, lr)
 
+        for i, (images, targets) in enumerate(data_loader):
             # plot_training_data(args, images, targets, N * epoch + i)
 
             images = mk_var(images)
@@ -123,14 +121,12 @@ def train(net, dataset, args):
 
         save_checkpoint(net, args, epoch, os.path.join(args.checkpoint_dir, 'epoch_%d.pth' % epoch))
 
-def adjust_learning_rate(optimizer, gamma, step):
-    """Sets the learning rate to the initial LR decayed by 10 at every specified step
-    # Adapted from PyTorch Imagenet example:
-    # https://github.com/pytorch/examples/blob/master/imagenet/main.py
-    """
-    lr = args.lr * (gamma ** (step))
+def adjust_learning_rate(optimizer, lr):
+    new_lr = lr / 10
     for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+        param_group['lr'] = new_lr
+    print('Adjusting learning rate, new lr is %f' % new_lr)
+    return new_lr
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training')
@@ -152,12 +148,10 @@ if __name__ == '__main__':
     default_type = 'torch.cuda.FloatTensor' if args.cuda else 'torch.FloatTensor'
     torch.set_default_tensor_type(default_type)
 
-    anchors = Anchors(args.ssd_size)
+    DS_Class = VOC if 'VOC' in args.train_data else SpaceNet
 
-    if 'VOC' in args.train_data:
-        dataset = VOC(args.train_data, Transform(args.ssd_size), anchors)
-    else:
-        dataset = SpaceNet(args.train_data, Transform(args.ssd_size), anchors)
+    net = Retina(DS_Class.classes, args.ssd_size)
+    dataset = DS_Class(args.train_data, Transform(args.ssd_size, net.anchors))
 
     args.checkpoint_dir = os.path.join(args.save_folder, 'ssd_%s' % datetime.now().isoformat())
     args.stepvalues = (1, 20, 50)
@@ -168,8 +162,6 @@ if __name__ == '__main__':
         args.checkpoint_dir = os.path.dirname(args.resume)
 
     os.makedirs(args.save_folder, exist_ok = True)
-
-    net = Retina(dataset.classes, args.ssd_size, anchors)
 
     if args.cuda:
         net = net.cuda()

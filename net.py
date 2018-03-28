@@ -6,7 +6,6 @@ from retina import Retina
 from PIL import Image
 from torchvision import transforms
 from torch.autograd import Variable
-from anchors import Anchors
 
 pandas.options.mode.chained_assignment = None
 
@@ -59,8 +58,7 @@ class RetinaNet:
         return zipfile
 
     def __init__(self, weights, classes=['building'], size=512):
-        anchors = Anchors(size)
-        self.net = Retina(classes, size, anchors).eval()
+        self.net = Retina(classes, size).eval()
         chkpnt = torch.load(weights)
         self.size = size
         self.net.load_state_dict(chkpnt['state_dict'])

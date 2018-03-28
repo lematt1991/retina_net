@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 class SpaceNet(data.Dataset):
     name = 'SpaceNet'
     classes = ['building']
-    def __init__(self, anno_file, transform, anchors):
+    def __init__(self, anno_file, transform):
         self.transform = transform
         self.root_dir = os.path.dirname(os.path.realpath(anno_file))
 
@@ -15,8 +15,6 @@ class SpaceNet(data.Dataset):
         self.annos = list(filter(lambda x: len(x['rects']) > 0, self.annos))
 
         self.keys = ['x1', 'y1', 'x2', 'y2']
-
-        self.anchors = anchors
 
     def __len__(self):
         return len(self.annos)
@@ -33,7 +31,7 @@ class SpaceNet(data.Dataset):
         
         img_data, target = self.transform(img, target)
 
-        return img_data, self.anchors.encode(target), img.height, img.width
+        return img_data, target, img.height, img.width
 
 class VOC(data.Dataset):
     name = 'VOC'
@@ -41,12 +39,11 @@ class VOC(data.Dataset):
              'cow', 'diningtable', 'dog', 'horse', 'motorbike', 'person', 'pottedplant',
              'sheep', 'sofa', 'train', 'tvmonitor')
     
-    def __init__(self, root_dir, transform, anchors, keep_difficult = False):
+    def __init__(self, root_dir, transform, keep_difficult = False):
         self.transform = transform
         self.root_dir = root_dir
         anno_files = glob.glob(os.path.join(root_dir, 'Annotations/*.xml'))
         class_map = {k : i for i, k in enumerate(self.classes)}
-        self.anchors = anchors
 
         self.annos = []
         for file in anno_files:
@@ -78,7 +75,7 @@ class VOC(data.Dataset):
         img = Image.open(anno['img'])
         target = torch.Tensor(anno['objects'])
         img, target = self.transform(img, target)
-        return img, self.anchors.encode(target), anno['height'], anno['width']
+        return img, target, anno['height'], anno['width']
 
 def detection_collate(batch):
     """Custom collate fn for dealing with batches of images that have a different

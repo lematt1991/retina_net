@@ -3,7 +3,7 @@ import torch, pdb, math
 from utils import corner_form, mesh, center_form, jaccard, encode, decode
 
 def mk_anchors(input_size):
-    areas = [32*32, 64*64, 128*128, 256*256, 512*512]
+    areas = [16*16, 32*32, 64*64, 128*128, 256*256, 512*512]
     aspect_ratios = [0.5, 1.0, 2.0]
     scales = [1.0, pow(2.0, 1.0/3.0), pow(2.0, 2.0/3.0)]
     if isinstance(input_size, int):
@@ -22,7 +22,7 @@ def mk_anchors(input_size):
     hws = torch.Tensor(anchor_hw).view(len(areas), -1, 2)
     anchors = []
     for i, area in enumerate(areas):
-        fm_size = (input_size / pow(2.0, i+3)).ceil()
+        fm_size = (input_size / pow(2.0, i+2)).ceil()
         width = int(fm_size[0])
         height = int(fm_size[1])
 

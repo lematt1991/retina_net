@@ -40,7 +40,7 @@ class Retina(torch.nn.Module):
 
         self.conf.apply(init_conf) 
 
-    def __init__(self, classes, size, anchors = None):
+    def __init__(self, classes, size):
         super(Retina, self).__init__()
 
         self.classes = classes
@@ -70,7 +70,7 @@ class Retina(torch.nn.Module):
         self.loc = self.mk_subnet(4, include_sigmoid=False)
         self.conf = self.mk_subnet(self.num_classes, include_sigmoid = False)
 
-        self.anchors = Anchors(size, False) if anchors is None else anchors
+        self.anchors = Anchors(size)
 
         self.detect = Detect(self.num_classes, 200, 0.01, 0.45, self.anchors)
 
@@ -102,7 +102,7 @@ class Retina(torch.nn.Module):
         loc_pred, conf_pred = [], []
 
         # Localization/Classification
-        for fm in [p3, p4, p5, p6, p7]: #, p4, p5, p6, p7]:
+        for fm in [p2, p3, p4, p5, p6, p7]: #, p4, p5, p6, p7]:
             locs = self.loc(fm).permute((0, 2, 3, 1))
             confs = self.conf(fm).permute((0, 2, 3, 1))
 
