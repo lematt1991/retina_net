@@ -10,9 +10,9 @@ from anchors import Anchors
 
 pandas.options.mode.chained_assignment = None
 
-NAME = 'SSD'
+NAME = 'RetinaNet'
 
-class SSD:
+class RetinaNet:
     name = NAME
 
     @classmethod
@@ -20,14 +20,14 @@ class SSD:
         '''
         Create an MD5 hash from a models weight file.
         Arguments:
-            path : str - path to TensorBox checkpoint
+            path : str - path to RetinaNet checkpoint
         '''
         dirs = path.split('/')
-        if 'ssd.pytorch' in dirs:
-            dirs = dirs[dirs.index('ssd.pytorch'):]
+        if 'retina_net' in dirs:
+            dirs = dirs[dirs.index('retina_net'):]
             path = '/'.join(dirs)
         else:
-            path = os.path.join('ssd.pytorch', path)
+            path = os.path.join('retina_net', path)
 
         md5 = hashlib.md5()
         md5.update(path.encode('utf-8'))
@@ -41,7 +41,7 @@ class SSD:
         dirs = path.split('/')
 
         res = {
-            'name' : 'TensorBox',
+            'name' : 'RetinaNet',
             'instance' : '_'.join(dirs[-2:]),
             'id' : cls.mk_hash(path)
         }
@@ -125,7 +125,7 @@ if __name__ == '__main__':
     
     img = Image.open(args.img)
     
-    ssd = SSD(args.weights, size=512)
+    ssd = RetinaNet(args.weights, size=512)
     boxes = ssd.predict_image(img, 0)
 
     img_data = np.array(img)[:, :, (2, 1, 0)].copy()
