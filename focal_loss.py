@@ -13,6 +13,10 @@ class Loss(nn.Module):
         self.alpha = Variable(torch.Tensor([0.25] + [0.75] * (num_classes - 1)), requires_grad=False)
 
     def cross_entropy(self, conf_pred, target_labels, num_classes):
+        '''
+        this is the normal hard negative mining cross entropy approach used
+        in the SSD paper.
+        '''
         num_pos = (target_labels > 0).sum().data[0]
         num_neg = max(128, num_pos * self.negpos_ratio)
 
