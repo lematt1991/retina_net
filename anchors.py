@@ -3,7 +3,7 @@ import torch, pdb, math
 from utils import corner_form, mesh, center_form, jaccard, encode, decode
 
 def mk_anchors(input_size):
-    areas = [16*16, 32*32, 64*64, 128*128, 256*256, 512*512]
+    areas = [32*32, 64*64, 128*128, 256*256, 512*512]
     aspect_ratios = [0.5, 1.0, 2.0]
     scales = [1.0, pow(2.0, 1.0/3.0), pow(2.0, 2.0/3.0)]
     if isinstance(input_size, int):
@@ -22,16 +22,16 @@ def mk_anchors(input_size):
     hws = torch.Tensor(anchor_hw).view(len(areas), -1, 2)
     anchors = []
     for i, area in enumerate(areas):
-        fm_size = (input_size / pow(2.0, i+2)).ceil()
+        fm_size = (input_size / pow(2.0, i+3)).ceil()
         width = int(fm_size[0])
         height = int(fm_size[1])
 
         grid_size = input_size / width
 
         xy = mesh(width, height) + 0.5 # center point
+
         # Create 9 xy points for each point in each grid cell
         xy = (xy * grid_size).view(height, width, 1, 2).expand(height, width, 9, 2)
-
         wh = hws[i].view(1,1,9,2).expand(height, width, 9, 2)
 
         boxes = torch.cat([xy, wh], dim=3)
@@ -44,27 +44,53 @@ def mk_anchors(input_size):
     result.clamp_(min=0, max=1)
 
     result = center_form(result)
+
     return result
 
 class Anchors:
     def __init__(self, size):
         self.size = torch.Tensor([size, size])
         self.anchors = mk_anchors(size)
+        self.encode = self.encode_argmax
+
+    # Encode the target boxes according to:
+    # https://arxiv.org/pdf/1611.10012.pdf
+    # TLDR: 
+    #   - [10 * xc/wa, 10 * yc/ha, 5*log w, 5*log h]
+    #   - Use bipartite matching
+    def encode_bipartite(self, target):
+        if len(target) == 0:
+            return torch.zeros(self.anchors.shape[0], 5)
+
+        ious = jaccard(target[:, :4], corner_form(self.anchors))
+
+        max_iou, iou_idxs = ious.max(dim=1)
+
+        target_boxes = torch.zeros(self.anchors.shape[0], 5)
+
+        anchors = self.anchors[iou_idxs]
+        cf = center_form(target[:, :4])
+        xy = 10 * (cf[:, :2] - anchors[:, :2]) / anchors[:, 2:]
+        wh = 5 * torch.log(cf[:, 2:] / anchors[:, 2:])
+        encoded = torch.cat([xy, wh], dim=1)
+
+        target_boxes[iou_idxs] = torch.cat([encoded, target[:, -1].unsqueeze(1) + 1], dim=1)
+        return target_boxes
 
     # Encode the target boxes according to:
     # https://arxiv.org/pdf/1611.10012.pdf
     # TLDR: 
     #   - [10 * xc/wa, 10 * yc/ha, 5*log w, 5*log h]
     #   - Use argmax matching
-    def encode(self, target):
+    def encode_argmax(self, target):
         if len(target) == 0:
-            return torch.zeros(self.anchors.shape[0], 6)
+            return torch.zeros(self.anchors.shape[0], 5)
 
         ious = jaccard(target[:, :4], corner_form(self.anchors))
         max_iou, iou_idxs = ious.max(dim=0)
 
         if (max_iou >= 0.5).sum() == 0:
-            return torch.zeros(self.anchors.shape[0], 6)
+            return torch.zeros(self.anchors.shape[0], 5)
 
         boxes = center_form(target[:, :4])[iou_idxs]
         
@@ -75,7 +101,9 @@ class Anchors:
 
         labels = torch.zeros(target_boxes.shape[0], 1)
         labels[max_iou >= 0.5] = target[:, -1][iou_idxs[max_iou >= 0.5]] + 1
-        return torch.cat([target_boxes, labels, max_iou.unsqueeze(1)], dim=1)
+        labels[(max_iou > 0.3) & (max_iou < 0.5)] = -1
+
+        return torch.cat([target_boxes, labels], dim=1)
 
     # Undo the anchor offset encoding done above...
     def decode(self, boxes):

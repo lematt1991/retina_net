@@ -26,8 +26,19 @@ class Retina(torch.nn.Module):
             if isinstance(layer, torch.nn.Sequential) and name != '_backbone':
                 stack.extend(list(layer.named_children()))
             elif isinstance(layer, torch.nn.Conv2d):
-                torch.nn.init.xavier_normal(layer.weight)
+                layer.weight.data.normal_(mean=0, std=0.01)
                 layer.bias.data.zero_()
+
+        N = self.ANCHORS_PER_GRID_CELL * self.num_classes
+        def init_conf(layer):
+            if isinstance(layer, torch.nn.Conv2d) and layer.out_channels == N:
+                # Start training with a significant bias towards classifying as background
+                pi = .01
+                layer.bias.data.zero_()
+                bias = torch.log((layer.bias.data[0::self.num_classes] + 1 - pi) / pi)
+                layer.bias.data[0::self.num_classes] = bias
+
+        self.conf.apply(init_conf) 
 
     def __init__(self, classes, size, anchors = None):
         super(Retina, self).__init__()
@@ -91,7 +102,7 @@ class Retina(torch.nn.Module):
         loc_pred, conf_pred = [], []
 
         # Localization/Classification
-        for fm in [p2, p3, p4, p5, p6, p7]: #, p4, p5, p6, p7]:
+        for fm in [p3, p4, p5, p6, p7]: #, p4, p5, p6, p7]:
             locs = self.loc(fm).permute((0, 2, 3, 1))
             confs = self.conf(fm).permute((0, 2, 3, 1))
 
