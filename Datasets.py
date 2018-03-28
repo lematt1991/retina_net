@@ -41,11 +41,11 @@ class VOC(data.Dataset):
              'cow', 'diningtable', 'dog', 'horse', 'motorbike', 'person', 'pottedplant',
              'sheep', 'sofa', 'train', 'tvmonitor')
     
-    def __init__(self, root_dir, transform, anchors):
+    def __init__(self, root_dir, transform, anchors, keep_difficult = False):
         self.transform = transform
         self.root_dir = root_dir
         anno_files = glob.glob(os.path.join(root_dir, 'Annotations/*.xml'))
-        class_map = {k : i for i, k in enumerate(VOC_CLASSES)}
+        class_map = {k : i for i, k in enumerate(self.classes)}
         self.anchors = anchors
 
         self.annos = []
