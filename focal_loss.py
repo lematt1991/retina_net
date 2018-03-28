@@ -5,36 +5,11 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from utils import log_sum_exp, jaccard, corner_form
 
-class MultiBoxLoss(nn.Module):
-    """SSD Weighted Loss Function
-    Compute Targets:
-        1) Produce Confidence Target Indices by matching  ground truth boxes
-           with (default) 'priorboxes' that have jaccard index > threshold parameter
-           (default threshold: 0.5).
-        2) Produce localization target by 'encoding' variance into offsets of ground
-           truth boxes and their matched  'priorboxes'.
-        3) Hard negative mining to filter the excessive number of negative examples
-           that comes with using a large number of default bounding boxes.
-           (default negative:positive ratio 3:1)
-    Objective Loss:
-        L(x,c,l,g) = (Lconf(x, c) + αLloc(x,l,g)) / N
-        Where, Lconf is the CrossEntropy Loss and Lloc is the SmoothL1 Loss
-        weighted by α which is set to 1 by cross val.
-        Args:
-            c: class confidences,
-            l: predicted boxes,
-            g: ground truth boxes
-            N: number of matched default boxes
-        See: https://arxiv.org/pdf/1512.02325.pdf for more details.
-    """
-
-    def __init__(self, num_classes, overlap_thresh, neg_pos, use_gpu=True, variance=[0.1, 0.2]):
-        super(MultiBoxLoss, self).__init__()
-        self.use_gpu = use_gpu
+class Loss(nn.Module):
+    def __init__(self, num_classes, neg_pos):
+        super(Loss, self).__init__()
         self.num_classes = num_classes
-        self.threshold = overlap_thresh
         self.negpos_ratio = neg_pos
-        self.variance = variance
         self.alpha = Variable(torch.Tensor([0.25] + [0.75] * (num_classes - 1)), requires_grad=False)
 
     def cross_entropy(self, conf_pred, target_labels, num_classes):

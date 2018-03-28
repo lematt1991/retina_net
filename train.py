@@ -1,13 +1,10 @@
 #!/usr/bin/env python
-import os, pdb, cv2, argparse
-import torch
+import os, pdb, cv2, argparse, torch, numpy as np, time
 import torch.optim as optim
 import torch.utils.data as data
 from torch.autograd import Variable
 from Datasets import detection_collate, VOC, SpaceNet
-from focal_loss import MultiBoxLoss
-import numpy as np
-import time
+from focal_loss import Loss
 from subprocess import check_output
 from datetime import datetime
 from retina import Retina
@@ -82,7 +79,7 @@ def train(net, dataset, args):
                       momentum=args.momentum, weight_decay=args.weight_decay)
     anchors = Variable(dataset.anchors.anchors, requires_grad=False)
 
-    criterion = MultiBoxLoss(len(dataset.classes) + 1, 0.5, 3)
+    criterion = Loss(len(dataset.classes) + 1, 3)
 
     net.train()
 
