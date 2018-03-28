@@ -112,10 +112,11 @@ def train(net, dataset, args):
             loss.backward()
             optimizer.step()
 
-            if i % 10 == 0:
-                conf = F.softmax(out[1].view(-1, len(dataset.classes) + 1), dim=1).data.cpu().numpy()
-                args.writer.add_histogram('data/background conf', conf[:, 0], N * epoch + i)
-                args.writer.add_histogram('data/building conf', conf[:, 1], N * epoch + i)
+            loc, conf = map(lambda x: x.view(-1, x.shape[-1]), out)
+            target = targets.view(-1, targets.shape[-1])
+
+            probs = F.softmax(conf[(target[:, -1] > 0).unsqueeze(1).expand_as(conf)].view(-1, conf.shape[-1]), dim=1)
+            args.writer.add_histogram('data/building_conf', probs[:, 1], N * epoch + i)
 
             args.writer.add_scalar('data/loss', loss.data[0], N * epoch + i)
             args.writer.add_scalar('data/loss_l', loss_l.data[0], N * epoch + i)
@@ -162,9 +163,12 @@ if __name__ == '__main__':
         dataset = SpaceNet(args.train_data, Transform(args.ssd_size), anchors)
 
     args.checkpoint_dir = os.path.join(args.save_folder, 'ssd_%s' % datetime.now().isoformat())
-    args.stepvalues = (20, 50, 70)
+    args.stepvalues = (1, 20, 50)
     args.start_iter = 0
     args.writer = SummaryWriter()
+
+    if args.resume:
+        args.checkpoint_dir = os.path.dirname(args.resume)
 
     os.makedirs(args.save_folder, exist_ok = True)
 
