@@ -1,12 +1,10 @@
 from torchvision.models import resnet101
-import pdb, torch
+import pdb, torch, math
 import torch.nn.functional as F
 from detection import Detect
 from anchors import Anchors
 
 class Retina(torch.nn.Module):
-    ANCHORS_PER_GRID_CELL = 9
-
     def mk_subnet(self, out_factor, include_sigmoid = True):
         layers = []
 
@@ -14,7 +12,7 @@ class Retina(torch.nn.Module):
             layers.append(torch.nn.Conv2d(256, 256, 3, padding=1))
             layers.append(torch.nn.ELU(inplace=True))
 
-        layers.append(torch.nn.Conv2d(256, self.ANCHORS_PER_GRID_CELL * out_factor, 3, padding=1))
+        layers.append(torch.nn.Conv2d(256, self.anchors_per_grid_cell * out_factor, 3, padding=1))
         if include_sigmoid:
             layers.append(torch.nn.Sigmoid())
         return torch.nn.Sequential(*layers)
@@ -29,7 +27,7 @@ class Retina(torch.nn.Module):
                 layer.weight.data.normal_(mean=0, std=0.01)
                 layer.bias.data.zero_()
 
-        N = self.ANCHORS_PER_GRID_CELL * self.num_classes
+        N = self.anchors_per_grid_cell * self.num_classes
         def init_conf(layer):
             if isinstance(layer, torch.nn.Conv2d) and layer.out_channels == N:
                 # Start training with a significant bias towards classifying as background
@@ -40,11 +38,12 @@ class Retina(torch.nn.Module):
 
         self.conf.apply(init_conf) 
 
-    def __init__(self, classes, size):
+    def __init__(self, config):
         super(Retina, self).__init__()
 
-        self.classes = classes
-        self.num_classes = len(classes) + 1
+        self.anchors_per_grid_cell = len(config.anchors.aspect_ratios) * len(config.anchors.scales)
+        self.classes = config.classes
+        self.num_classes = len(self.classes) + 1
 
         self._backbone = resnet101(pretrained=True)
 
@@ -70,9 +69,10 @@ class Retina(torch.nn.Module):
         self.loc = self.mk_subnet(4, include_sigmoid=False)
         self.conf = self.mk_subnet(self.num_classes, include_sigmoid = False)
 
-        self.anchors = Anchors(size)
+        self.anchors = Anchors(config)
 
         self.detect = Detect(self.num_classes, 200, 0.01, 0.45, self.anchors)
+        self.config = config
 
     def forward(self, x):
         batch_size, channels, height, width = x.shape
@@ -101,8 +101,12 @@ class Retina(torch.nn.Module):
 
         loc_pred, conf_pred = [], []
 
+        layers = [p2, p3, p4, p5, p6, p7]
+
         # Localization/Classification
-        for fm in [p2, p3, p4, p5, p6, p7]: #, p4, p5, p6, p7]:
+        for anchor_area in self.config.anchors.areas:
+            fm = layers[int(math.log2(anchor_area) - 4)]
+
             locs = self.loc(fm).permute((0, 2, 3, 1))
             confs = self.conf(fm).permute((0, 2, 3, 1))
 

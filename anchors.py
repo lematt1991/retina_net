@@ -2,14 +2,13 @@ from __future__ import division
 import torch, pdb, math
 from utils import corner_form, mesh, center_form, jaccard, encode, decode
 
-def mk_anchors(input_size):
-    areas = [16*16, 32*32, 64*64, 128*128, 256*256, 512*512]
-    aspect_ratios = [0.5, 1.0, 2.0]
-    scales = [1.0, pow(2.0, 1.0/3.0), pow(2.0, 2.0/3.0)]
-    if isinstance(input_size, int):
-        input_size = torch.Tensor([input_size, input_size])
-    else:
-        input_size = torch.Tensor(input_size)
+def mk_anchors(config):
+    areas = config.anchors.areas
+    aspect_ratios = config.anchors.aspect_ratios
+    scales = config.anchors.scales
+
+    input_size = torch.Tensor([config.model_input_size, config.model_input_size])
+    anchors_per_cell = len(aspect_ratios) * len(scales)
 
     anchor_hw = []
     for area in areas:
@@ -18,11 +17,13 @@ def mk_anchors(input_size):
             w = ar * h
             for scale in scales:
                 anchor_hw.append([w * scale, h * scale])
-    # Tensor: NFMs X 9 X 2
+
+    # Tensor: NFMs X 3 X 2
     hws = torch.Tensor(anchor_hw).view(len(areas), -1, 2)
     anchors = []
     for i, area in enumerate(areas):
-        fm_size = (input_size / pow(2.0, i+2)).ceil()
+        fm_size = (input_size / area * 4).ceil()
+
         width = int(fm_size[0])
         height = int(fm_size[1])
 
@@ -30,9 +31,9 @@ def mk_anchors(input_size):
 
         xy = mesh(width, height) + 0.5 # center point
 
-        # Create 9 xy points for each point in each grid cell
-        xy = (xy * grid_size).view(height, width, 1, 2).expand(height, width, 9, 2)
-        wh = hws[i].view(1,1,9,2).expand(height, width, 9, 2)
+        # Create 3 xy points for each point in each grid cell
+        xy = (xy * grid_size).view(height, width, 1, 2).expand(height, width, anchors_per_cell, 2)
+        wh = hws[i].view(1,1,anchors_per_cell,2).expand(height, width, anchors_per_cell, 2)
 
         boxes = torch.cat([xy, wh], dim=3)
         anchors.append(boxes.view(-1, 4))
@@ -48,9 +49,8 @@ def mk_anchors(input_size):
     return result
 
 class Anchors:
-    def __init__(self, size):
-        self.size = torch.Tensor([size, size])
-        self.anchors = mk_anchors(size)
+    def __init__(self, config):
+        self.anchors = mk_anchors(config)
         self.encode = self.encode_argmax
 
     # Encode the target boxes according to:
@@ -115,10 +115,11 @@ class Anchors:
         return corner_form(boxes)
 
 if __name__ == '__main__':
+    from config import config
     default_type = 'torch.DoubleTensor'
     torch.set_default_tensor_type(default_type)
 
-    anchors = Anchors(512)
+    anchors = Anchors(config)
     boxes = torch.rand(20, 4) * 0.5
 
     boxes[:, 2:] += 0.5

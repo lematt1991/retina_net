@@ -1,4 +1,4 @@
-import os, pdb, numpy as np, time, json, pandas, glob, hashlib, torch
+import os, pdb, numpy as np, time, json, pandas, glob, hashlib, torch, cv2
 from shapely.geometry import MultiPolygon, box
 from subprocess import check_output
 from zipfile import ZipFile
@@ -6,6 +6,7 @@ from retina import Retina
 from PIL import Image
 from torchvision import transforms
 from torch.autograd import Variable
+from Datasets import Transform, SpaceNet
 
 pandas.options.mode.chained_assignment = None
 
@@ -57,7 +58,7 @@ class RetinaNet:
 
         return zipfile
 
-    def __init__(self, weights, classes=['building'], size=512):
+    def __init__(self, weights, classes=['building'], size=512, cuda = True):
         self.net = Retina(classes, size).eval()
         chkpnt = torch.load(weights)
         self.size = size
@@ -67,8 +68,12 @@ class RetinaNet:
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
+        self.net = self.net.cuda()
+        self.net.anchors.anchors = self.net.anchors.anchors.cuda()
+        torch.set_default_tensor_type('torch.cuda.FloatTensor')
+        self.cuda = cuda
 
-    def predict_image(self, image, threshold, eval_mode = False):
+    def predict_image(self, image, eval_mode = False):
         """
         Infer buildings for a single image.
         Inputs:
@@ -77,41 +82,72 @@ class RetinaNet:
 
         t0 = time.time()
         img = self.transform(image)
+        if self.cuda:
+            img = img.cuda()
 
-        out = self.net(Variable(img.unsqueeze(0), volatile=True)).squeeze().data.cpu()
+        out = self.net(Variable(img.unsqueeze(0), volatile=True)).squeeze().data.cpu().numpy()
         total_time = time.time() - t0
         
-        scores = out[:, :, 0] # class X top K X (score, minx, miny, maxx, maxy)
-        
-        max_scores, inds = scores.max(dim=0)
+        out = out[1] # ignore background class
 
-        linear = torch.arange(0, out.shape[1]).long()
-        boxes = out[inds, linear].numpy()
-        boxes[:, (1, 3)] = np.clip(boxes[:, (1, 3)] * image.width, a_min=0, a_max=image.width)
-        boxes[:, (2, 4)] = np.clip(boxes[:, (2, 4)] * image.height, a_min=0, a_max=image.height)
+        out[:, (1, 3)] = np.clip(out[:, (1, 3)] * image.width, a_min=0, a_max=image.width)
+        out[:, (2, 4)] = np.clip(out[:, (2, 4)] * image.height, a_min=0, a_max=image.height)
 
-        df = pandas.DataFrame(boxes, columns=['score', 'x1' ,'y1', 'x2', 'y2'])
+        out = out[out[:, 0] > 0]
 
-        if eval_mode:
-            return df[df['score'] > threshold], df, total_time
-        else:
-            return df[df['score'] > threshold]
+        return pandas.DataFrame(out, columns=['score', 'x1' ,'y1', 'x2', 'y2'])
 
     def predict_all(self, test_boxes_file, threshold, data_dir = None):
-        annos = json.load(open(test_boxes_file))
+        dataset = SpaceNet(test_boxes_file, Transform(512, self.net.anchors))
+
         if data_dir is None:
             data_dir = os.path.join(os.path.dirname(test_boxes_file))
         
+        batch_size = 8
+
         total_time = 0.0
 
-        for i, anno in enumerate(annos):
-            orig_img = Image.open(os.path.join(data_dir, anno['image_path']))
-            pred, all_rects, time = self.predict_image(orig_img, threshold, eval_mode = True)
+        for batch in range(0, len(dataset), batch_size):
+            images,  sizes = [], []
+            for i in range(min(batch_size, len(dataset) - batch)):
+                img, _, size = dataset[batch + i]
+                images.append(img)
+                sizes.append(size)
 
-            pred['image_id'] = i
-            all_rects['image_id'] = i
+            images = torch.stack(images)
+            sizes = torch.stack(sizes)
 
-            yield pred, all_rects, ()
+            if self.cuda:
+                images = images.cuda()
+                sizes = sizes.cuda()
+
+            out = self.net(Variable(images, volatile=True)).data
+
+            hws = torch.cat([sizes, sizes], dim=1).view(-1, 1, 1, 4).expand(-1, out.shape[1], out.shape[2], -1)
+
+            out[:, :, :, 1:] *= hws
+            out = out[:, 1, :, :].cpu().numpy()
+
+            for i, detections in enumerate(out):
+                detections = detections[detections[:, 0] > 0]
+                df = pandas.DataFrame(detections, columns=['score', 'x1', 'y1', 'x2', 'y2'])
+                df['image_id'] = dataset.annos[batch + i]['image_path']
+
+                anno = dataset.annos[batch + i]
+                pred = cv2.imread('../data/' + anno['image_path'])
+                truth = pred.copy()
+
+                for box in df[['x1', 'y1', 'x2', 'y2']].values.round().astype(int):
+                    cv2.rectangle(pred, tuple(box[:2]), tuple(box[2:4]), (0,0,255))
+
+                for r in anno['rects']:
+                    box = list(map(lambda x: int(r[x]), ['x1', 'y1', 'x2', 'y2']))
+                    cv2.rectangle(truth, tuple(box[:2]), tuple(box[2:]), (0, 0, 255))
+
+                data = np.concatenate([pred, truth], axis=1)
+                cv2.imwrite('samples/image_%d.jpg' % (batch + i), data)
+
+                yield df
 
 if __name__ == '__main__':
     import cv2, sys, argparse
@@ -124,7 +160,7 @@ if __name__ == '__main__':
     img = Image.open(args.img)
     
     ssd = RetinaNet(args.weights, size=512)
-    boxes = ssd.predict_image(img, 0)
+    boxes = ssd.predict_image(img)
 
     img_data = np.array(img)[:, :, (2, 1, 0)].copy()
 

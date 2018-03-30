@@ -43,7 +43,7 @@ class Loss(nn.Module):
         td = target_labels.data
         onehot = torch.eye(num_classes)[td[td >= 0]]
 
-        onehot = Variable(onehot, requires_grad = False)
+        onehot = Variable(onehot, requires_grad = False) * self.alpha
 
         conf_pred = conf_pred[(td >= 0).unsqueeze(1).expand_as(conf_pred)].view(-1, num_classes)
 
@@ -91,7 +91,7 @@ class Loss(nn.Module):
         if len(pos_pred_boxes) > 0:
             loc_loss = F.smooth_l1_loss(pos_pred_boxes, pos_target_boxes)
         else:
-            loc_loss = 0
+            loc_loss = Variable(torch.Tensor([0]))
 
         return loc_loss, conf_loss
 
