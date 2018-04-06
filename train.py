@@ -57,8 +57,6 @@ def train(net, dataset, args, config):
     data_loader = data.DataLoader(dataset, config.batch_size, shuffle=True, collate_fn=detection_collate)
     N = len(data_loader)
 
-    save_checkpoint(net, args, 0, config, 'test.pth')
-
     mk_var = lambda x: Variable(x.cuda() if args.cuda else x)
     for epoch in range(args.start_iter, args.epochs):
         if epoch in args.stepvalues:
