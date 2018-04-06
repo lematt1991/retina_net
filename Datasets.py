@@ -28,13 +28,15 @@ class Transform:
 class SpaceNet(data.Dataset):
     name = 'SpaceNet'
     classes = ['building']
-    def __init__(self, anno_file, transform):
+    def __init__(self, anno_file, transform, root_dir = None):
         self.transform = transform
-        self.root_dir = os.path.dirname(os.path.realpath(anno_file))
+        self.root_dir = os.path.dirname(os.path.realpath(anno_file)) if root_dir is None else root_dir
 
         self.annos = json.load(open(anno_file, 'r'))
 
         self.keys = ['x1', 'y1', 'x2', 'y2']
+
+        self.even()
 
     def __len__(self):
         return len(self.annos)
