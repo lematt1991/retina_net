@@ -27,14 +27,14 @@ config = Dotable.parse({
     'image_size' : 512, # do we need to change the resolution of the image?
     'batch_size' : 8,
     'anchors' : {
-        'areas' : [16, 32, 64, 128, 256, 512],
-        'aspect_ratios' : [1],
-        'scales' : [1.0, pow(2.0, 1.0/3.0), pow(2.0, 2.0/3.0)],
+        'areas' : [32, 64, 128, 256, 512],
+        'aspect_ratios' : [1, 2, 0.5],
+        'scales' : [1.0, pow(2.0, 1.0/3.0), pow(2, 2.0/3.0)],
         'encoding' : 'argmax'
     },
     'optim' : {
         'weight_decay' : 5e-4,
-        'lr' : 0.01,
+        'lr' : 0.001,
         'momentum' : 0.9
     }    
 })
