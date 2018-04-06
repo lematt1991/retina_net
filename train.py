@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-import os, pdb, cv2, argparse, torch, numpy as np, time
+import os, pdb, cv2, argparse, torch, numpy as np, time, json
 import torch.optim as optim
 import torch.utils.data as data
 from torch.autograd import Variable
-from Datasets import detection_collate, VOC, SpaceNet, Transform
+from Datasets import detection_collate, VOC, SpaceNet, SpaceNet4, Transform
 from focal_loss import Loss
 from subprocess import check_output
 from datetime import datetime
@@ -32,21 +32,13 @@ def load_checkpoint(net, args):
     else:
         net.init_weights()
 
-def plot_training_data(args, inputs, targets, iter):
-    r = np.random.randint(0, len(inputs))
-    img = inputs[r].cpu().numpy().transpose((1,2,0))[:, :, (2,1,0)]
-    target = targets[r].cpu().numpy()
-
-    img = img - img.min(axis=(0, 1))
-    img = img / img.max(axis=(0, 1)) * 255
-    img = img.round().astype('uint8')
-
-    target = target[:,:4] * img.shape[0]
-
-    img = img.copy()
+def plot_training_data(args, batch, iter):
+    r = np.random.randint(0, len(batch))
+    img = np.array(batch[r]['img'])[:, :, (2, 1, 0)].copy()
+    target = batch[r]['target'].cpu().numpy()
 
     for box in target.round().astype(int):
-        cv2.rectangle(img, tuple(box[:2]), tuple(box[2:]), (0,0,255))
+        cv2.rectangle(img, tuple(box[:2]), tuple(box[2:4]), (0,0,255))
 
     img = img[:, :, (2,1,0)].transpose((2, 0, 1))
     img = torch.from_numpy(img)
@@ -62,7 +54,7 @@ def train(net, dataset, args, config):
 
     net.train()
 
-    data_loader = data.DataLoader(dataset, config.batch_size, shuffle=True)
+    data_loader = data.DataLoader(dataset, config.batch_size, shuffle=True, collate_fn=detection_collate)
     N = len(data_loader)
 
     save_checkpoint(net, args, 0, config, 'test.pth')
@@ -72,8 +64,8 @@ def train(net, dataset, args, config):
         if epoch in args.stepvalues:
             lr = adjust_learning_rate(optimizer, lr)
 
-        for i, (images, targets, _) in enumerate(data_loader):
-            # plot_training_data(args, images, targets, N * epoch + i)
+        for i, (images, targets, orig) in enumerate(data_loader):
+            plot_training_data(args, orig, N * epoch + i)
 
             images = mk_var(images)
             targets = mk_var(targets)
@@ -92,19 +84,18 @@ def train(net, dataset, args, config):
             target = targets.view(-1, targets.shape[-1])
 
             mask = target[:, -1] > 0
-            if mask.sum().data[0] > 0:
+            if mask.sum().item() > 0:
                 probs = F.softmax(conf[mask.unsqueeze(1).expand_as(conf)].view(-1, conf.shape[-1]), dim=1)
                 args.writer.add_histogram('data/building_conf', probs[:, 1], N * epoch + i)
 
             probs = F.softmax(conf[(target[:, -1] == 0).unsqueeze(1).expand_as(conf)].view(-1, conf.shape[-1]), dim=1)
             args.writer.add_histogram('data/background_conf', probs[:, 0], N * epoch + i)
 
+            args.writer.add_scalar('data/loss', loss.item(), N * epoch + i)
+            args.writer.add_scalar('data/loss_l', loss_l.item(), N * epoch + i)
+            args.writer.add_scalar('data/loss_c', loss_c.item(), N * epoch + i)
 
-            args.writer.add_scalar('data/loss', loss.data[0], N * epoch + i)
-            args.writer.add_scalar('data/loss_l', loss_l.data[0], N * epoch + i)
-            args.writer.add_scalar('data/loss_c', loss_c.data[0], N * epoch + i)
-
-            print('%d: [%d/%d] || Loss: %.4f, loss_c: %f, loss_l: %f' % (epoch, i, N, loss.data[0], loss_c.data[0], loss_l.data[0]))
+            print('%d: [%d/%d] || Loss: %.4f, loss_c: %f, loss_l: %f' % (epoch, i, N, loss.item(), loss_c.item(), loss_l.item()))
 
         save_checkpoint(net, args, epoch, config, os.path.join(args.checkpoint_dir, 'epoch_%d.pth' % epoch))
 
@@ -124,6 +115,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
     parser.add_argument('--epochs', default=100, type=int, help='Maximum training epochs')
     parser.add_argument('--train_data', required=True, help='Path to training data')
+    parser.add_argument('--data_dir', default=None, help='Directory of training data')
     args = parser.parse_args()
 
     default_type = 'torch.cuda.FloatTensor' if args.cuda else 'torch.FloatTensor'
@@ -132,11 +124,10 @@ if __name__ == '__main__':
     DS_Class = VOC if 'VOC' in args.train_data else SpaceNet
 
     net = Retina(config)
-    dataset = DS_Class(args.train_data, Transform(config, net.anchors))
-    dataset.even()
+    dataset = DS_Class(args.train_data, Transform(config, net.anchors), root_dir=args.data_dir)
 
     args.checkpoint_dir = os.path.join(args.save_folder, 'ssd_%s' % datetime.now().isoformat())
-    args.stepvalues = (1, 20, 50)
+    args.stepvalues = (20, 50, 80)
     args.start_iter = 0
     args.writer = SummaryWriter()
 

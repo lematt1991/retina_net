@@ -43,9 +43,10 @@ class Loss(nn.Module):
         td = target_labels.data
         onehot = torch.eye(num_classes)[td[td >= 0]]
 
+
         onehot = Variable(onehot, requires_grad = False) * self.alpha
 
-        conf_pred = conf_pred[(td >= 0).unsqueeze(1).expand_as(conf_pred)].view(-1, num_classes)
+        conf_pred = conf_pred[td >= 0, :]
 
         # Subtract max on each cell for numerical reasons
         # https://github.com/caffe2/caffe2/blob/master/modules/detectron/softmax_focal_loss_op.cu#L36-L41
@@ -70,7 +71,6 @@ class Loss(nn.Module):
             targets (tensor): Ground truth boxes and labels for a batch,
                 shape: [batch_size,num_objs,5] (last idx is the label).
         """
-
         loc_pred, conf_pred = predictions
         batch_size, num_anchors, num_classes = conf_pred.shape
 

@@ -58,13 +58,13 @@ class RetinaNet:
 
         return zipfile
 
-    def __init__(self, weights, classes=['building'], size=512, cuda = True):
-        self.net = Retina(classes, size).eval()
+    def __init__(self, weights, classes=['building'], cuda = True):
         chkpnt = torch.load(weights)
-        self.size = size
+        self.config = chkpnt['config']
+        self.net = Retina(chkpnt['config']).eval()
         self.net.load_state_dict(chkpnt['state_dict'])
         self.transform = transforms.Compose([
-            transforms.Resize((size, size)),
+            transforms.Resize((self.config.model_input_size, self.config.model_input_size)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
@@ -98,21 +98,20 @@ class RetinaNet:
         return pandas.DataFrame(out, columns=['score', 'x1' ,'y1', 'x2', 'y2'])
 
     def predict_all(self, test_boxes_file, threshold, data_dir = None):
-        dataset = SpaceNet(test_boxes_file, Transform(512, self.net.anchors))
-
         if data_dir is None:
             data_dir = os.path.join(os.path.dirname(test_boxes_file))
         
-        batch_size = 8
+        annos = json.load(open(test_boxes_file))
 
+        batch_size = 8
         total_time = 0.0
 
-        for batch in range(0, len(dataset), batch_size):
+        for batch in range(0, len(annos), batch_size):
             images,  sizes = [], []
-            for i in range(min(batch_size, len(dataset) - batch)):
-                img, _, size = dataset[batch + i]
-                images.append(img)
-                sizes.append(size)
+            for i in range(min(batch_size, len(annos) - batch)):
+                img = Image.open(os.path.join(data_dir, annos[batch + i]['image_path']))
+                images.append(self.transform(img))
+                sizes.append(torch.Tensor([img.width, img.height]))
 
             images = torch.stack(images)
             sizes = torch.stack(sizes)
@@ -129,12 +128,13 @@ class RetinaNet:
             out = out[:, 1, :, :].cpu().numpy()
 
             for i, detections in enumerate(out):
+                anno = annos[batch + i]
+                pred = cv2.imread('../data/' + anno['image_path'])
+
                 detections = detections[detections[:, 0] > 0]
                 df = pandas.DataFrame(detections, columns=['score', 'x1', 'y1', 'x2', 'y2'])
-                df['image_id'] = dataset.annos[batch + i]['image_path']
+                df['image_id'] = anno['image_path']
 
-                anno = dataset.annos[batch + i]
-                pred = cv2.imread('../data/' + anno['image_path'])
                 truth = pred.copy()
 
                 for box in df[['x1', 'y1', 'x2', 'y2']].values.round().astype(int):
