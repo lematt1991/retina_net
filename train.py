@@ -59,7 +59,7 @@ def train(net, dataset, args, config):
 
     mk_var = lambda x: Variable(x.cuda() if args.cuda else x)
     for epoch in range(args.start_iter, args.epochs):
-        if epoch in args.stepvalues:
+        if epoch in config.step_values:
             lr = adjust_learning_rate(optimizer, lr)
 
         for i, (images, targets) in enumerate(data_loader):
@@ -125,7 +125,6 @@ if __name__ == '__main__':
     dataset = DS_Class(args.train_data, Transform(config, net.anchors), root_dir=args.data_dir)
 
     args.checkpoint_dir = os.path.join(args.save_folder, 'ssd_%s' % datetime.now().isoformat())
-    args.stepvalues = (20, 50, 80)
     args.start_iter = 0
     args.writer = SummaryWriter()
 
