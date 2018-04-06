@@ -13,7 +13,7 @@ def mk_anchors(config):
     anchor_hw = []
     for area in areas:
         for ar in aspect_ratios:
-            h = math.sqrt(float(area) / ar)
+            h = math.sqrt(float(area*area) / ar)
             w = ar * h
             for scale in scales:
                 anchor_hw.append([w * scale, h * scale])
@@ -100,7 +100,8 @@ class Anchors:
         target_boxes = torch.cat([xy, wh], dim=1)
 
         labels = torch.zeros(target_boxes.shape[0], 1)
-        labels[max_iou >= 0.5] = target[:, -1][iou_idxs[max_iou >= 0.5]] + 1
+
+        labels[max_iou >= 0.5, 0] = target[:, -1][iou_idxs[max_iou >= 0.5]] + 1
         labels[(max_iou > 0.3) & (max_iou < 0.5)] = -1
 
         return torch.cat([target_boxes, labels], dim=1)
