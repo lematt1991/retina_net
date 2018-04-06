@@ -97,7 +97,7 @@ class RetinaNet:
 
         return pandas.DataFrame(out, columns=['score', 'x1' ,'y1', 'x2', 'y2'])
 
-    def predict_all(self, test_boxes_file, threshold, data_dir = None):
+    def predict_all(self, test_boxes_file, data_dir = None):
         if data_dir is None:
             data_dir = os.path.join(os.path.dirname(test_boxes_file))
         
