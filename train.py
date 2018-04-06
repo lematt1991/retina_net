@@ -3,7 +3,7 @@ import os, pdb, cv2, argparse, torch, numpy as np, time, json
 import torch.optim as optim
 import torch.utils.data as data
 from torch.autograd import Variable
-from Datasets import detection_collate, VOC, SpaceNet, SpaceNet4, Transform
+from Datasets import detection_collate, VOC, SpaceNet, Transform
 from focal_loss import Loss
 from subprocess import check_output
 from datetime import datetime
@@ -64,8 +64,8 @@ def train(net, dataset, args, config):
         if epoch in args.stepvalues:
             lr = adjust_learning_rate(optimizer, lr)
 
-        for i, (images, targets, orig) in enumerate(data_loader):
-            plot_training_data(args, orig, N * epoch + i)
+        for i, (images, targets) in enumerate(data_loader):
+            # plot_training_data(args, orig, N * epoch + i)
 
             images = mk_var(images)
             targets = mk_var(targets)
