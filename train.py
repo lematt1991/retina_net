@@ -50,7 +50,7 @@ def train(net, dataset, args, config):
     optimizer = optim.SGD(net.parameters(), lr=lr,
                       momentum=config.optim.momentum, weight_decay=config.optim.weight_decay)
 
-    criterion = Loss(len(dataset.classes) + 1, 3)
+    criterion = Loss(len(dataset.classes) + 1, 3, config)
 
     net.train()
 
@@ -92,6 +92,7 @@ def train(net, dataset, args, config):
             args.writer.add_scalar('data/loss', loss.item(), N * epoch + i)
             args.writer.add_scalar('data/loss_l', loss_l.item(), N * epoch + i)
             args.writer.add_scalar('data/loss_c', loss_c.item(), N * epoch + i)
+            args.writer.add_scalar('data/n_pos', targets[targets > 0].sum().data.item(), N * epoch + i)
 
             print('%d: [%d/%d] || Loss: %.4f, loss_c: %f, loss_l: %f' % (epoch, i, N, loss.item(), loss_c.item(), loss_l.item()))
 
@@ -109,12 +110,16 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training')
     parser.add_argument('--resume', default=None, type=str, help='Resume from checkpoint')
-    parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
+    parser.add_argument('--gpu', default=0, type=int, help='Which GPU to run on')
     parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
     parser.add_argument('--epochs', default=100, type=int, help='Maximum training epochs')
     parser.add_argument('--train_data', required=True, help='Path to training data')
     parser.add_argument('--data_dir', default=None, help='Directory of training data')
     args = parser.parse_args()
+
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
+
+    args.cuda = args.gpu is not None
 
     default_type = 'torch.cuda.FloatTensor' if args.cuda else 'torch.FloatTensor'
     torch.set_default_tensor_type(default_type)

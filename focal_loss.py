@@ -6,11 +6,13 @@ from torch.autograd import Variable
 from utils import log_sum_exp, jaccard, corner_form
 
 class Loss(nn.Module):
-    def __init__(self, num_classes, neg_pos):
+    def __init__(self, num_classes, neg_pos, config):
         super(Loss, self).__init__()
         self.num_classes = num_classes
         self.negpos_ratio = neg_pos
-        self.alpha = Variable(torch.Tensor([0.25] + [0.75] * (num_classes - 1)), requires_grad=False)
+        self.alpha = Variable(torch.Tensor(config.focal_loss_alpha), requires_grad=False)
+        self.config = config
+        assert(config.loss_baseline == 'total' or config.loss_baseline == 'positive')
 
     def cross_entropy(self, conf_pred, target_labels, num_classes):
         '''
@@ -53,11 +55,13 @@ class Loss(nn.Module):
         conf_pred = conf_pred - conf_pred.max(dim=1)[0].unsqueeze(1).expand_as(conf_pred)
 
         pt = F.softmax(conf_pred, dim=1)
-        gamma = 2
+        gamma = self.config.loss_gamma
 
         conf_loss = -(torch.pow(1 - pt, gamma) * onehot * torch.log(pt)).sum()
 
-        return conf_loss / pt.shape[0]
+        baseline = pt.shape[0] if self.config.loss_baseline == 'total' else max((target_labels > 0).sum().item(), 1) * 100
+
+        return conf_loss / baseline
 
     def forward(self, predictions, targets):
         """Multibox Loss

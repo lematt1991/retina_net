@@ -52,6 +52,8 @@ class Anchors:
     def __init__(self, config):
         self.anchors = mk_anchors(config)
         self.encode = self.encode_argmax
+        self.argmax_pos_thresh = config.argmax_pos_thresh
+        self.argmax_neg_thresh = config.argmax_neg_thresh
 
     # Encode the target boxes according to:
     # https://arxiv.org/pdf/1611.10012.pdf
@@ -89,7 +91,7 @@ class Anchors:
         ious = jaccard(target[:, :4], corner_form(self.anchors))
         max_iou, iou_idxs = ious.max(dim=0)
 
-        if (max_iou >= 0.5).sum() == 0:
+        if (max_iou >= self.argmax_pos_thresh).sum() == 0:
             return torch.zeros(self.anchors.shape[0], 5)
 
         boxes = center_form(target[:, :4])[iou_idxs]
@@ -101,8 +103,14 @@ class Anchors:
 
         labels = torch.zeros(target_boxes.shape[0], 1)
 
-        labels[max_iou >= 0.5, 0] = target[:, -1][iou_idxs[max_iou >= 0.5]] + 1
-        labels[(max_iou > 0.3) & (max_iou < 0.5)] = -1
+
+        labels[max_iou >= self.argmax_pos_thresh, 0] = target[:, -1][iou_idxs[max_iou >= self.argmax_pos_thresh]] + 1
+        labels[(max_iou > self.argmax_neg_thresh) & (max_iou < self.argmax_pos_thresh)] = -1
+
+        # If it doesn't have a high enough threshold, still give it a label if it is the nearest anchor
+        _, idxs = ious.max(dim=1)
+        labels[idxs, 0] = target[:, -1] + 1 
+
 
         return torch.cat([target_boxes, labels], dim=1)
 

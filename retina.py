@@ -95,12 +95,12 @@ class Retina(torch.nn.Module):
 
         # bilinear upsampling allows for upsampling to arbitrary size in case the input image
         # is not of a size that is divisible by a power of 2
-        p4 = F.upsample(p5, size=tuple(c4.shape[2:4]), mode='bilinear') + self.conv4(c4)
-        p3 = F.upsample(p4, size=tuple(c3.shape[2:4]), mode='bilinear') + self.conv3(c3)
-        p2 = F.upsample(p3, size=tuple(c2.shape[2:4]), mode='bilinear') + self.conv2(c2)
+        p4 = F.upsample(p5, size=tuple(c4.shape[2:4]), mode='bilinear', align_corners=True) + self.conv4(c4)
+        p3 = F.upsample(p4, size=tuple(c3.shape[2:4]), mode='bilinear', align_corners=True) + self.conv3(c3)
+        p2 = F.upsample(p3, size=tuple(c2.shape[2:4]), mode='bilinear', align_corners=True) + self.conv2(c2)
 
         loc_pred, conf_pred = [], []
-
+        
         layers = [p2, p3, p4, p5, p6, p7]
 
         # Localization/Classification

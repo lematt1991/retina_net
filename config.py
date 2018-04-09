@@ -7,7 +7,8 @@ class Dotable(dict):
         ('image_size', 512),
         ('argmax_pos_thresh', 0.5),
         ('argmax_neg_thresh', 0.3),
-        ('step_values', (20, 50, 80))
+        ('step_values', (20, 50, 80)),
+        ('loss_baseline', 'total')
     ]
 
     __getattr__= dict.__getitem__
@@ -23,7 +24,7 @@ class Dotable(dict):
         If we add new parameters to the config that previously were not 
         modifiable, then fill what the hard coded option was.
         '''
-        for k, v in defaults:
+        for k, v in self.defaults:
             if k not in self:
                 setattr(self, k, v)
 
@@ -42,18 +43,21 @@ class Dotable(dict):
 
 config = Dotable.parse({
     'classes' : ['building'],
+    'loss_baseline' : 'total', # either 'total' or 'positive'
     'model_input_size' : 512,
-    'step_values' : (1, 50, 80), # learning rate reduction at each epoch
+    'step_values' : (20, 50, 80), # learning rate reduction at each epoch
     'argmax_neg_thresh' : 0.3, # if overlap between anchor is less than this, consider negative example
-    'argmax_pos_thresh' : 0.5, # if overlap between anchor is higher than this, consider it positive
+    'argmax_pos_thresh' : 0.7, # if overlap between anchor is higher than this, consider it positive
     'image_size' : 512, # do we need to change the resolution of the image?
     'batch_size' : 8,
+    'focal_loss_alpha' : [1, 95],
     'anchors' : {
-        'areas' : [32, 64, 128, 256, 512],
+        'areas' : [16, 32, 64, 128, 256, 512],
         'aspect_ratios' : [1, 2, 0.5],
         'scales' : [1.0, pow(2.0, 1.0/3.0), pow(2, 2.0/3.0)],
-        'encoding' : 'bipartite'
+        'encoding' : 'argmax' # bipartite or argmax
     },
+    'loss_gamma' : 4,
     'optim' : {
         'weight_decay' : 5e-4,
         'lr' : 0.01,
