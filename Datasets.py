@@ -1,4 +1,4 @@
-import pdb, os, glob, sys, torch, numpy as np, json, re, random
+import pdb, os, glob, sys, torch, numpy as np, json, re, random, boto3
 import torch.utils.data as data
 import torchvision.transforms as transforms
 from PIL import Image, ImageDraw, ImageFont
@@ -28,7 +28,7 @@ class Transform:
 class SpaceNet(data.Dataset):
     name = 'SpaceNet'
     classes = ['building']
-    def __init__(self, anno_file, transform, root_dir = None):
+    def __init__(self, anno_file, transform, config, root_dir = None):
         self.transform = transform
         self.root_dir = os.path.dirname(os.path.realpath(anno_file)) if root_dir is None else root_dir
 
@@ -37,6 +37,11 @@ class SpaceNet(data.Dataset):
         self.keys = ['x1', 'y1', 'x2', 'y2']
 
         self.even()
+
+        if config.s3:
+            self.s3 = boto3.resource('s3')        
+
+        self.config = config
 
     def __len__(self):
         return len(self.annos)
@@ -68,6 +73,12 @@ class SpaceNet(data.Dataset):
 
     def __getitem__(self, idx):
         anno = self.annos[idx]
+
+        path = os.path.join(self.root_dir, anno['image_path'])
+
+        if not os.path.exists(path) and self.config.s3:
+            self.s3.Bucket(self.config.s3).download_file(anno['image_path'], path)
+
         img = Image.open(os.path.join(self.root_dir, anno['image_path']))
 
         target = torch.Tensor([[r[k] for k in self.keys] + [0] for r in anno['rects']])

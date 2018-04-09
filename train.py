@@ -127,7 +127,7 @@ if __name__ == '__main__':
     DS_Class = VOC if 'VOC' in args.train_data else SpaceNet
 
     net = Retina(config)
-    dataset = DS_Class(args.train_data, Transform(config, net.anchors), root_dir=args.data_dir)
+    dataset = DS_Class(args.train_data, Transform(config, net.anchors), config, root_dir=args.data_dir)
 
     args.checkpoint_dir = os.path.join(args.save_folder, 'ssd_%s' % datetime.now().isoformat())
     args.start_iter = 0

@@ -51,6 +51,7 @@ config = Dotable.parse({
     'image_size' : 512, # do we need to change the resolution of the image?
     'batch_size' : 8,
     'focal_loss_alpha' : [1, 95],
+    's3' : 'dl-training-data',
     'anchors' : {
         'areas' : [16, 32, 64, 128, 256, 512],
         'aspect_ratios' : [1, 2, 0.5],
