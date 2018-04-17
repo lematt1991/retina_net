@@ -3,9 +3,9 @@ import torch, pdb, math
 from utils import corner_form, mesh, center_form, jaccard, encode, decode
 
 def mk_anchors(config):
-    areas = config.anchors.areas
-    aspect_ratios = config.anchors.aspect_ratios
-    scales = config.anchors.scales
+    areas = config.anchor_areas
+    aspect_ratios = config.anchor_ratios
+    scales = config.anchor_scales
 
     input_size = torch.Tensor([config.model_input_size, config.model_input_size])
     anchors_per_cell = len(aspect_ratios) * len(scales)

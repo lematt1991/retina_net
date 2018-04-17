@@ -60,8 +60,8 @@ class RetinaNet:
 
     def __init__(self, weights, classes=['building'], cuda = True):
         chkpnt = torch.load(weights)
-        self.config = chkpnt['config']
-        self.net = Retina(chkpnt['config']).eval()
+        self.config = chkpnt['args']
+        self.net = Retina(self.config).eval()
         self.net.load_state_dict(chkpnt['state_dict'])
         self.transform = transforms.Compose([
             transforms.Resize((self.config.model_input_size, self.config.model_input_size)),
@@ -85,7 +85,7 @@ class RetinaNet:
         if self.cuda:
             img = img.cuda()
 
-        out = self.net(Variable(img.unsqueeze(0), volatile=True)).squeeze().data.cpu().numpy()
+        out = self.net(Variable(img.unsqueeze(0), requires_grad=False)).squeeze().data.cpu().numpy()
         total_time = time.time() - t0
         
         out = out[1] # ignore background class
@@ -97,13 +97,12 @@ class RetinaNet:
 
         return pandas.DataFrame(out, columns=['score', 'x1' ,'y1', 'x2', 'y2'])
 
-    def predict_all(self, test_boxes_file, data_dir = None):
+    def predict_all(self, test_boxes_file, batch_size=8, data_dir = None):
         if data_dir is None:
             data_dir = os.path.join(os.path.dirname(test_boxes_file))
         
         annos = json.load(open(test_boxes_file))
 
-        batch_size = 8
         total_time = 0.0
 
         for batch in range(0, len(annos), batch_size):
@@ -120,7 +119,7 @@ class RetinaNet:
                 images = images.cuda()
                 sizes = sizes.cuda()
 
-            out = self.net(Variable(images, volatile=True)).data
+            out = self.net(Variable(images, requires_grad=False)).data
 
             hws = torch.cat([sizes, sizes], dim=1).view(-1, 1, 1, 4).expand(-1, out.shape[1], out.shape[2], -1)
 

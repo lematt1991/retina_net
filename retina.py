@@ -36,12 +36,15 @@ class Retina(torch.nn.Module):
                 bias = torch.log((layer.bias.data[0::self.num_classes] + 1 - pi) / pi)
                 layer.bias.data[0::self.num_classes] = bias
 
+                weight = torch.Tensor(layer.weight.shape[0] // self.num_classes, *layer.weight.shape[1:]).normal_(mean=0, std=0.001)
+                layer.weight.data[0::self.num_classes] = weight
+
         self.conf.apply(init_conf) 
 
     def __init__(self, config):
         super(Retina, self).__init__()
 
-        self.anchors_per_grid_cell = len(config.anchors.aspect_ratios) * len(config.anchors.scales)
+        self.anchors_per_grid_cell = len(config.anchor_ratios) * len(config.anchor_scales)
         self.classes = config.classes
         self.num_classes = len(self.classes) + 1
 
@@ -104,7 +107,7 @@ class Retina(torch.nn.Module):
         layers = [p2, p3, p4, p5, p6, p7]
 
         # Localization/Classification
-        for anchor_area in self.config.anchors.areas:
+        for anchor_area in self.config.anchor_areas:
             fm = layers[int(math.log2(anchor_area) - 4)]
 
             locs = self.loc(fm).permute((0, 2, 3, 1))

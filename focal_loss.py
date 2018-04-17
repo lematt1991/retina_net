@@ -12,9 +12,8 @@ class Loss(nn.Module):
         self.negpos_ratio = neg_pos
         self.alpha = Variable(torch.Tensor(config.focal_loss_alpha), requires_grad=False)
         self.config = config
-        assert(config.loss_baseline == 'total' or config.loss_baseline == 'positive')
 
-    def cross_entropy(self, conf_pred, target_labels, num_classes):
+    def cross_entropy(self, conf_pred, target_labels):
         '''
         this is the normal hard negative mining cross entropy approach used
         in the SSD paper.
@@ -41,10 +40,9 @@ class Loss(nn.Module):
 
         return F.cross_entropy(conf, labels)
 
-    def focal_loss(self, conf_pred, target_labels, num_classes):
+    def focal_loss(self, conf_pred, target_labels):
         td = target_labels.data
-        onehot = torch.eye(num_classes)[td[td >= 0]]
-
+        onehot = torch.eye(self.num_classes)[td[td >= 0]]
 
         onehot = Variable(onehot, requires_grad = False) * self.alpha
 
@@ -57,9 +55,16 @@ class Loss(nn.Module):
         pt = F.softmax(conf_pred, dim=1)
         gamma = self.config.loss_gamma
 
-        conf_loss = -(torch.pow(1 - pt, gamma) * onehot * torch.log(pt)).sum()
+        conf_loss = -(torch.pow(1 - pt, gamma) * onehot * torch.log(pt))
 
-        baseline = pt.shape[0] if self.config.loss_baseline == 'total' else max((target_labels > 0).sum().item(), 1) * 100
+        if self.config.loss_baseline == 'total':
+            baseline = pt.shape[0]
+        elif self.config.loss_baseline == 'positive':
+            baseline = max((target_labels > 0).long().sum().item(), 1)
+        elif self.config.loss_baseline == 'pos_neg':
+            return (conf_loss.sum(dim=0) / onehot.sum(dim=0).clamp_(min=1)).sum()
+        else:
+            raise ValueError('Invalid loss_baseline')
 
         return conf_loss / baseline
 
@@ -84,8 +89,8 @@ class Loss(nn.Module):
         conf_pred = conf_pred.view(-1, num_classes)
         loc_pred = loc_pred.view(-1, 4)
 
-        # conf_loss = self.cross_entropy(conf_pred, target_labels, num_classes)
-        conf_loss = self.focal_loss(conf_pred, target_labels, num_classes)
+        # conf_loss = self.cross_entropy(conf_pred, target_labels)
+        conf_loss = self.focal_loss(conf_pred, target_labels)
 
         # Location loss
         mask = (target_labels > 0).unsqueeze(1).expand_as(loc_pred)

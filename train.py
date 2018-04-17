@@ -16,12 +16,12 @@ import torch.nn.functional as F
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
 
-def save_checkpoint(net, args, iter, config, filename):
+def save_checkpoint(net, args, iter, filename):
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     torch.save({
         'iter': iter,
         'state_dict' : net.state_dict(),
-        'config' : config
+        'args' : args
     }, filename)
 
 def load_checkpoint(net, args):
@@ -32,7 +32,7 @@ def load_checkpoint(net, args):
     else:
         net.init_weights()
 
-def plot_training_data(args, batch, iter):
+def plot_training_data(writer, batch, iter):
     r = np.random.randint(0, len(batch))
     img = np.array(batch[r]['img'])[:, :, (2, 1, 0)].copy()
     target = batch[r]['target'].cpu().numpy()
@@ -43,27 +43,29 @@ def plot_training_data(args, batch, iter):
     img = img[:, :, (2,1,0)].transpose((2, 0, 1))
     img = torch.from_numpy(img)
 
-    args.writer.add_image('training_data', img, iter)
+    writer.add_image('training_data', img, iter)
 
-def train(net, dataset, args, config):
-    lr = config.optim.lr
-    optimizer = optim.SGD(net.parameters(), lr=lr,
-                      momentum=config.optim.momentum, weight_decay=config.optim.weight_decay)
+def train(net, dataset, args):
+    lr = args.learning_rate
+    optimizer = optim.SGD(net.parameters(), lr=lr, 
+        momentum=args.momentum, weight_decay=args.weight_decay)
 
-    criterion = Loss(len(dataset.classes) + 1, 3, config)
+    criterion = Loss(len(dataset.classes) + 1, 3, args)
 
     net.train()
 
-    data_loader = data.DataLoader(dataset, config.batch_size, shuffle=True, collate_fn=detection_collate)
+    data_loader = data.DataLoader(dataset, args.batch_size, shuffle=True, collate_fn=detection_collate)
     N = len(data_loader)
+
+    writer = SummaryWriter()
 
     mk_var = lambda x: Variable(x.cuda() if args.cuda else x)
     for epoch in range(args.start_iter, args.epochs):
-        if epoch in config.step_values:
+        if epoch in args.step_values:
             lr = adjust_learning_rate(optimizer, lr)
 
         for i, (images, targets) in enumerate(data_loader):
-            # plot_training_data(args, orig, N * epoch + i)
+            # plot_training_data(writer, orig, N * epoch + i)
 
             images = mk_var(images)
             targets = mk_var(targets)
@@ -84,19 +86,18 @@ def train(net, dataset, args, config):
             mask = target[:, -1] > 0
             if mask.sum().item() > 0:
                 probs = F.softmax(conf[mask.unsqueeze(1).expand_as(conf)].view(-1, conf.shape[-1]), dim=1)
-                args.writer.add_histogram('data/building_conf', probs[:, 1], N * epoch + i)
+                writer.add_histogram('data/building_conf', probs[:, 1], N * epoch + i)
 
             probs = F.softmax(conf[(target[:, -1] == 0).unsqueeze(1).expand_as(conf)].view(-1, conf.shape[-1]), dim=1)
-            args.writer.add_histogram('data/background_conf', probs[:, 0], N * epoch + i)
+            writer.add_histogram('data/background_conf', probs[:, 0], N * epoch + i)
 
-            args.writer.add_scalar('data/loss', loss.item(), N * epoch + i)
-            args.writer.add_scalar('data/loss_l', loss_l.item(), N * epoch + i)
-            args.writer.add_scalar('data/loss_c', loss_c.item(), N * epoch + i)
-            args.writer.add_scalar('data/n_pos', targets[targets > 0].sum().data.item(), N * epoch + i)
+            writer.add_scalar('data/loss', loss.item(), N * epoch + i)
+            writer.add_scalar('data/loss_l', loss_l.item(), N * epoch + i)
+            writer.add_scalar('data/loss_c', loss_c.item(), N * epoch + i)
 
             print('%d: [%d/%d] || Loss: %.4f, loss_c: %f, loss_l: %f' % (epoch, i, N, loss.item(), loss_c.item(), loss_l.item()))
 
-        save_checkpoint(net, args, epoch, config, os.path.join(args.checkpoint_dir, 'epoch_%d.pth' % epoch))
+        save_checkpoint(net, args, epoch, os.path.join(args.checkpoint_dir, 'epoch_%d.pth' % epoch))
 
 def adjust_learning_rate(optimizer, lr):
     new_lr = lr / 10
@@ -106,18 +107,16 @@ def adjust_learning_rate(optimizer, lr):
     return new_lr
 
 if __name__ == '__main__':
-    from config import config
-
-    parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training')
+    from config import parser
     parser.add_argument('--resume', default=None, type=str, help='Resume from checkpoint')
-    parser.add_argument('--gpu', default=0, type=int, help='Which GPU to run on')
+    parser.add_argument('--gpu', default='0', type=str, help='Which GPU to run on')
     parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
     parser.add_argument('--epochs', default=100, type=int, help='Maximum training epochs')
     parser.add_argument('--train_data', required=True, help='Path to training data')
     parser.add_argument('--data_dir', default=None, help='Directory of training data')
     args = parser.parse_args()
 
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     args.cuda = args.gpu is not None
 
@@ -126,12 +125,11 @@ if __name__ == '__main__':
 
     DS_Class = VOC if 'VOC' in args.train_data else SpaceNet
 
-    net = Retina(config)
-    dataset = DS_Class(args.train_data, Transform(config, net.anchors), config, root_dir=args.data_dir)
+    net = Retina(args)
+    dataset = DS_Class(args.train_data, Transform(args, net.anchors), args, root_dir=args.data_dir)
 
     args.checkpoint_dir = os.path.join(args.save_folder, 'ssd_%s' % datetime.now().isoformat())
     args.start_iter = 0
-    args.writer = SummaryWriter()
 
     if args.resume:
         args.checkpoint_dir = os.path.dirname(args.resume)
@@ -142,7 +140,7 @@ if __name__ == '__main__':
         net = net.cuda()
 
     load_checkpoint(net, args)
-    train(net, dataset, args, config)
+    train(net, dataset, args)
 
 
 
